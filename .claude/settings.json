@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn *)",
+      "Bash(./mvnw *)",
+      "Bash(gradle *)",
+      "Bash(./gradlew *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git show*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(java -version*)",
+      "Bash(echo *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -rf /)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(* DROP TABLE *)",
+      "Bash(* DROP DATABASE *)",
+      "Bash(* DELETE FROM *)",
+      "Bash(* TRUNCATE *)",
+      "Write(.env*)",
+      "Write(**/application-prod.yml)",
+      "Write(**/application-prod.yaml)",
+      "Write(**/application-prod.properties)"
+    ]
+  },
+  "env": {
+    "JAVA_HOME": "[CUSTOMIZE: 填写 JDK 路径或留空使用系统默认]"
+  }
+}
