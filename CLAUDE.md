@@ -6,15 +6,9 @@
 - **模块/职责**: [CUSTOMIZE: 填写业务简介，如 订单交易核心服务]
 - **技术栈**: Java + Spring Boot（版本从构建文件读取，不硬编码）
 
-## 构建工具自动检测
+## 构建工具
 
-Claude Code 在执行任何构建/测试命令前，先按以下规则检测构建工具：
-
-1. 项目根目录有 `pom.xml` → **Maven**，使用 `./mvnw`（若存在）否则 `mvn`
-2. 项目根目录有 `build.gradle` 或 `build.gradle.kts` → **Gradle**，使用 `./gradlew`（若存在）否则 `gradle`
-3. Java 版本和 Spring Boot 版本从构建文件中读取，不硬编码
-
-> 所有涉及构建/测试的 commands 和 agents 都必须遵循此检测逻辑。
+本项目使用 **Maven** 作为构建工具，使用 `./mvnw`（若存在）否则 `mvn`。Java 版本和 Spring Boot 版本从 `pom.xml` 中读取，不硬编码。
 
 ## 包结构约定
 
@@ -55,7 +49,7 @@ controller → service → domain
 
 ## 验证命令清单
 
-### Maven 项目
+### 验证命令
 
 ```bash
 # 编译（不跑测试）
@@ -72,22 +66,6 @@ mvn test -Dtest=OrderServiceTest#shouldReturnOrderWhenIdExists
 
 # 打包（跳过测试）
 mvn clean package -DskipTests
-```
-
-### Gradle 项目
-
-```bash
-# 编译
-./gradlew compileJava
-
-# 运行所有测试
-./gradlew test
-
-# 运行特定测试类
-./gradlew test --tests "com.example.service.OrderServiceTest"
-
-# 打包（跳过测试）
-./gradlew build -x test
 ```
 
 > **每次代码修改完成后，Claude Code 应自动执行编译验证，失败则停止并报告错误。**

@@ -3,8 +3,6 @@
     "allow": [
       "Bash(mvn *)",
       "Bash(./mvnw *)",
-      "Bash(gradle *)",
-      "Bash(./gradlew *)",
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",

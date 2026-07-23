@@ -1,5 +1,5 @@
 #!/bin/bash
-# pre-commit - 提交前 Checkstyle 静态检查（Maven/Gradle 双适配）
+# pre-commit - 提交前 Checkstyle 静态检查（Maven）
 # 只检查不修改代码（非格式化）
 # 安装方式：由 scripts/install-git-hooks.sh 自动安装到 .git/hooks/pre-commit
 
@@ -13,15 +13,9 @@ NC='\033[0m'
 
 echo -e "${YELLOW}[pre-commit] 开始静态检查...${NC}"
 
-# ====== 检测构建工具 ======
-BUILD_TOOL=""
-if [ -f "pom.xml" ]; then
-    BUILD_TOOL="maven"
-elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
-    BUILD_TOOL="gradle"
-else
-    # 非 Java 项目，跳过检查
-    echo -e "${YELLOW}[pre-commit] 未检测到 Maven/Gradle 构建文件，跳过检查${NC}"
+# ====== 检测 Maven 构建文件 ======
+if [ ! -f "pom.xml" ]; then
+    echo -e "${YELLOW}[pre-commit] 未检测到 pom.xml，跳过检查${NC}"
     exit 0
 fi
 
@@ -39,40 +33,21 @@ echo "$STAGED_JAVA_FILES" | sed 's/^/  /'
 # ====== 执行 Checkstyle 检查 ======
 CHECKSTYLE_EXIT_CODE=0
 
-if [ "$BUILD_TOOL" = "maven" ]; then
-    # Maven: 使用 checkstyle:check
-    # 优先使用 mvnw
-    if [ -f "./mvnw" ]; then
-        MVN_CMD="./mvnw"
-    else
-        MVN_CMD="mvn"
-    fi
+# Maven: 使用 checkstyle:check
+# 优先使用 mvnw
+if [ -f "./mvnw" ]; then
+    MVN_CMD="./mvnw"
+else
+    MVN_CMD="mvn"
+fi
 
-    echo -e "${YELLOW}[pre-commit] 执行 Maven Checkstyle 检查...${NC}"
-    # 检查是否有 checkstyle 插件配置
-    if grep -q "checkstyle" pom.xml 2>/dev/null; then
-        $MVN_CMD checkstyle:check -q 2>&1 || CHECKSTYLE_EXIT_CODE=$?
-    else
-        echo -e "${YELLOW}[pre-commit] 项目未配置 Checkstyle 插件，降级为编译检查${NC}"
-        $MVN_CMD compile -q -DskipTests 2>&1 || CHECKSTYLE_EXIT_CODE=$?
-    fi
-
-elif [ "$BUILD_TOOL" = "gradle" ]; then
-    # Gradle: 使用 checkstyleMain
-    if [ -f "./gradlew" ]; then
-        GRADLE_CMD="./gradlew"
-    else
-        GRADLE_CMD="gradle"
-    fi
-
-    echo -e "${YELLOW}[pre-commit] 执行 Gradle Checkstyle 检查...${NC}"
-    # 检查是否有 checkstyle 插件配置
-    if grep -q "checkstyle" build.gradle build.gradle.kts 2>/dev/null; then
-        $GRADLE_CMD checkstyleMain -q 2>&1 || CHECKSTYLE_EXIT_CODE=$?
-    else
-        echo -e "${YELLOW}[pre-commit] 项目未配置 Checkstyle 插件，降级为编译检查${NC}"
-        $GRADLE_CMD compileJava -q 2>&1 || CHECKSTYLE_EXIT_CODE=$?
-    fi
+echo -e "${YELLOW}[pre-commit] 执行 Maven Checkstyle 检查...${NC}"
+# 检查是否有 checkstyle 插件配置
+if grep -q "checkstyle" pom.xml 2>/dev/null; then
+    $MVN_CMD checkstyle:check -q 2>&1 || CHECKSTYLE_EXIT_CODE=$?
+else
+    echo -e "${YELLOW}[pre-commit] 项目未配置 Checkstyle 插件，降级为编译检查${NC}"
+    $MVN_CMD compile -q -DskipTests 2>&1 || CHECKSTYLE_EXIT_CODE=$?
 fi
 
 # ====== 输出结果 ======

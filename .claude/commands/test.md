@@ -8,9 +8,7 @@ description: 按改动范围运行相关测试。无参数时运行全量测试�
 
 ## 执行步骤
 
-1. **检测构建工具**：检查项目根目录
-   - 有 `pom.xml` → Maven（优先使用 `./mvnw`）
-   - 有 `build.gradle` 或 `build.gradle.kts` → Gradle（优先使用 `./gradlew`）
+1. **确认构建工具**：本项目使用 Maven（优先使用 `./mvnw`）
 
 2. **识别改动范围**：
    - 执行 `git diff --name-only` 获取改动的文件列表
@@ -20,16 +18,13 @@ description: 按改动范围运行相关测试。无参数时运行全量测试�
 3. **执行测试**：
 
    **如果传入了参数**（如 `/test OrderServiceTest`）：
-   - Maven: `mvn test -Dtest=参数值`
-   - Gradle: `./gradlew test --tests "*参数值*"`
+   - `mvn test -Dtest=参数值`
 
    **如果未传入参数**：
    - 有改动的测试类：逐个执行
-     - Maven: `mvn test -Dtest=Test1,Test2`
-     - Gradle: `./gradlew test --tests "*Test1*" --tests "*Test2*"`
+     - `mvn test -Dtest=Test1,Test2`
    - 无改动的测试类：运行全量测试
-     - Maven: `mvn test`
-     - Gradle: `./gradlew test`
+     - `mvn test`
 
 4. **输出结果**：
    - 测试总数 / 通过数 / 失败数

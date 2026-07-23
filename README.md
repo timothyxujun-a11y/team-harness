@@ -5,7 +5,7 @@
 ## 前置条件
 
 - Java 17+（或项目实际使用的版本）
-- Maven 3.6+ 或 Gradle 7+
+- Maven 3.6+
 - Claude Code 已安装并可用
 - Git
 
@@ -118,15 +118,6 @@ mvn test -Dtest=OrderServiceTest  # 指定测试类
 mvn clean package -DskipTests     # 打包
 ```
 
-### 构建命令（Gradle）
-
-```bash
-./gradlew compileJava              # 编译
-./gradlew test                     # 全量测试
-./gradlew test --tests "*Order*"  # 指定测试类
-./gradlew build -x test            # 打包
-```
-
 ### Git Hooks
 
 ```bash
@@ -175,10 +166,11 @@ rm -f .git/hooks/pre-commit        # 卸载 hook
 1. **流水的工具，铁打的规范**：规范写在文件里，不依赖某个 AI 工具的特定功能
 2. **AI 在约束下工作**：通过 rules、settings.json、git hooks 三层约束
 3. **改动最小化**：sync.sh 一键同步，适配只需填占位
-4. **不绑死技术栈**：Maven/Gradle 双适配，Java 版本从构建文件读取
+4. **不绑死技术栈**：Maven 适配，Java 版本从构建文件读取
 5. **不含格式化**：本期不集成 Spotless/google-java-format，只做静态检查
 
 ## 版本
 
+- v1.2.0 (2026-07-23)：构建工具固定为 Maven，移除 Gradle 支持
 - v1.1.0 (2026-07-23)：新增 `sync.sh` 脚本同步方式，支持 `--check`/`--force`/`--hooks`
 - v1.0.0 (2026-07-23)：初始版本，11 个交付文件
