@@ -146,45 +146,52 @@ public OrderDTO getOrder(Long id) {
 
 ### 5.1 框架与依赖
 
-- JUnit 5（`@Test`、`@DisplayName`、`@Nested`）
-- Mockito（`@Mock`、`@InjectMocks`、`when().thenReturn()`）
+- JUnit 4（`@Test`、`@Before`、`@RunWith`）
+- Mockito（`@Mock`、`@InjectMocks`、`@RunWith(MockitoJUnitRunner.class)`、`when().thenReturn()`）
 - AssertJ（`assertThat(actual).isEqualTo(expected)`）
 
 ### 5.2 命名与结构
 
 ```java
-@DisplayName("订单服务测试")
-class OrderServiceTest {
+@RunWith(MockitoJUnitRunner.class)
+public class OrderServiceTest {
 
-    @Nested
-    @DisplayName("查询订单")
-    class GetOrder {
+    @Mock
+    private OrderMapper orderMapper;
 
-        @Test
-        @DisplayName("订单存在时返回订单详情")
-        void shouldReturnOrderWhenIdExists() {
-            // Arrange
-            given(orderMapper.selectById(1L)).willReturn(testOrder());
+    @InjectMocks
+    private OrderService orderService;
 
-            // Act
-            OrderDTO result = orderService.getOrder(1L);
+    @Before
+    public void setUp() {
+        // 初始化测试数据（如有公共 fixture）
+    }
 
-            // Assert
-            assertThat(result.getId()).isEqualTo(1L);
-            assertThat(result.getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
-        }
+    @Test
+    public void shouldReturnOrderWhenIdExists() {
+        // Arrange
+        Order order = new Order();
+        order.setId(1L);
+        order.setStatus(OrderStatus.PENDING_PAYMENT);
+        when(orderMapper.selectById(1L)).thenReturn(order);
 
-        @Test
-        @DisplayName("订单不存在时抛出业务异常")
-        void shouldThrowWhenOrderNotFound() {
-            // Arrange
-            given(orderMapper.selectById(999L)).willReturn(null);
+        // Act
+        OrderDTO result = orderService.getOrder(1L);
 
-            // Act & Assert
-            assertThatThrownBy(() -> orderService.getOrder(999L))
-                    .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("订单不存在");
-        }
+        // Assert
+        assertThat(result.getId()).isEqualTo(1L);
+        assertThat(result.getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
+    }
+
+    @Test
+    public void shouldThrowWhenOrderNotFound() {
+        // Arrange
+        when(orderMapper.selectById(999L)).thenReturn(null);
+
+        // Act & Assert
+        assertThatThrownBy(() -> orderService.getOrder(999L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("订单不存在");
     }
 }
 ```
@@ -192,7 +199,7 @@ class OrderServiceTest {
 ### 5.3 规则
 
 1. **AAA 结构**：每个测试方法分为 Arrange（准备）、Act（执行）、Assert（断言）三段，用注释分隔
-2. **纯单元测试优先**：Service 层测试 mock Repository，不启动 Spring Context
+2. **禁止启动 Spring 容器**：所有单测必须是纯单元测试，通过 Mock 隔离依赖。禁止使用 `@SpringBootTest`、`@RunWith(SpringRunner.class)`、`@ContextConfiguration` 等注解。Service 层测试 mock Repository，不依赖数据库、缓存等外部资源
 3. **测试隔离**：每个测试方法独立，不依赖执行顺序，不共享可变状态
 4. **边界覆盖**：正常路径 + 空值 + 边界值 + 异常路径
 5. **不测试 getter/setter**：只测试包含逻辑的方法

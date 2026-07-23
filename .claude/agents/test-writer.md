@@ -1,6 +1,6 @@
 ---
 name: test-writer
-description: 为指定的 Java 类或方法生成 JUnit 5 + Mockito + AssertJ 单元测试。当用户要求编写测试、补充测试用例时激活。
+description: 为指定的 Java 类或方法生成 JUnit 4 + Mockito + AssertJ 单元测试。当用户要求编写测试、补充测试用例时激活。
 model: sonnet
 ---
 
@@ -19,22 +19,21 @@ model: sonnet
 ## 测试规范（必须遵守）
 
 ### 框架
-- JUnit 5（`@Test`、`@DisplayName`、`@Nested`、`@BeforeEach`）
-- Mockito（`@Mock`、`@InjectMocks`、`given().willReturn()`、`verify()`）
+- JUnit 4（`@Test`、`@Before`、`@RunWith(MockitoJUnitRunner.class)`）
+- Mockito（`@Mock`、`@InjectMocks`、`when().thenReturn()`、`verify()`）
 - AssertJ（`assertThat()`、`assertThatThrownBy()`）
 
 ### 命名
 - 测试类：`XxxTest`（如 `OrderServiceTest`）
 - 测试方法：`should期望行为When条件`（如 `shouldReturnOrderWhenIdExists`）
-- 使用 `@DisplayName` 提供中文描述
+- JUnit 4 无 `@DisplayName`，通过方法名表达意图
 
 ### 结构（AAA）
 ```java
 @Test
-@DisplayName("描述")
-void shouldXxxWhenYyy() {
+public void shouldXxxWhenYyy() {
     // Arrange
-    given(dependency.method(args)).willReturn(result);
+    when(dependency.method(args)).thenReturn(result);
 
     // Act
     ActualType result = target.method(args);
@@ -51,7 +50,8 @@ void shouldXxxWhenYyy() {
 - 异常路径：依赖抛异常时的处理
 
 ### 其他规则
-- 纯单元测试优先（不启动 Spring Context）
+- **禁止启动 Spring 容器**：所有单测必须是纯单元测试，禁止使用 `@SpringBootTest`、`@RunWith(SpringRunner.class)`、`@ContextConfiguration` 等注解
+- 通过 `@RunWith(MockitoJUnitRunner.class)` + `@Mock` 隔离所有外部依赖
 - 每个测试方法独立，不依赖执行顺序
 - 单个测试方法不超过 30 行
 - 不测试 getter/setter
@@ -66,8 +66,8 @@ void shouldXxxWhenYyy() {
 ## 示例
 
 ```java
-@DisplayName("订单服务测试")
-class OrderServiceTest {
+@RunWith(MockitoJUnitRunner.class)
+public class OrderServiceTest {
 
     @Mock
     private OrderMapper orderMapper;
@@ -75,52 +75,44 @@ class OrderServiceTest {
     @InjectMocks
     private OrderService orderService;
 
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
+    @Before
+    public void setUp() {
+        // 初始化公共 fixture（如有）
     }
 
-    @Nested
-    @DisplayName("查询订单")
-    class GetOrder {
+    @Test
+    public void shouldReturnOrderWhenIdExists() {
+        // Arrange
+        Order order = new Order();
+        order.setId(1L);
+        order.setStatus(OrderStatus.PENDING_PAYMENT);
+        when(orderMapper.selectById(1L)).thenReturn(order);
 
-        @Test
-        @DisplayName("订单存在时返回订单详情")
-        void shouldReturnOrderWhenIdExists() {
-            // Arrange
-            Order order = new Order();
-            order.setId(1L);
-            order.setStatus(OrderStatus.PENDING_PAYMENT);
-            given(orderMapper.selectById(1L)).willReturn(order);
+        // Act
+        OrderDTO result = orderService.getOrder(1L);
 
-            // Act
-            OrderDTO result = orderService.getOrder(1L);
+        // Assert
+        assertThat(result).isNotNull();
+        assertThat(result.getId()).isEqualTo(1L);
+        assertThat(result.getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
+    }
 
-            // Assert
-            assertThat(result).isNotNull();
-            assertThat(result.getId()).isEqualTo(1L);
-            assertThat(result.getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
-        }
+    @Test
+    public void shouldThrowWhenOrderNotFound() {
+        // Arrange
+        when(orderMapper.selectById(999L)).thenReturn(null);
 
-        @Test
-        @DisplayName("订单不存在时抛出业务异常")
-        void shouldThrowWhenOrderNotFound() {
-            // Arrange
-            given(orderMapper.selectById(999L)).willReturn(null);
+        // Act & Assert
+        assertThatThrownBy(() -> orderService.getOrder(999L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("订单不存在");
+    }
 
-            // Act & Assert
-            assertThatThrownBy(() -> orderService.getOrder(999L))
-                    .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("订单不存在");
-        }
-
-        @Test
-        @DisplayName("ID为null时抛出参数异常")
-        void shouldThrowWhenIdIsNull() {
-            // Act & Assert
-            assertThatThrownBy(() -> orderService.getOrder(null))
-                    .isInstanceOf(IllegalArgumentException.class);
-        }
+    @Test
+    public void shouldThrowWhenIdIsNull() {
+        // Act & Assert
+        assertThatThrownBy(() -> orderService.getOrder(null))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }
 ```

@@ -43,7 +43,7 @@ controller → service → domain
 2. **repository**：在 `repository/` 下新增数据访问方法（Mapper 接口 + XML 或 JPA 方法）
 3. **service**：在 `service/` 下新增业务方法，包含事务管理和异常处理
 4. **controller**：在 `controller/` 下新增 REST 端点，仅做参数校验和调用 service
-5. **单测**：为核心 service 方法编写单元测试（JUnit 5 + Mockito）
+5. **单测**：为核心 service 方法编写单元测试（JUnit 4 + Mockito）
 
 > 详细规范见 `docs/conventions.md`
 
@@ -72,10 +72,10 @@ mvn clean package -DskipTests
 
 ## 测试约定
 
-- **框架**：JUnit 5 + Mockito + AssertJ
+- **框架**：JUnit 4 + Mockito + AssertJ
 - **结构**：AAA（Arrange-Act-Assert），每个测试方法三段式
 - **命名**：`should期望行为When条件`，如 `shouldReturnOrderWhenIdExists`
-- **优先级**：纯单元测试优先（不依赖 Spring Context），集成测试次之
+- **最小化运行**：所有单测禁止启动 Spring 容器（不使用 `@SpringBootTest`、`@RunWith(SpringRunner.class)` 等注解），通过 Mock 隔离依赖
 - **覆盖率目标**：核心 service 方法必须有单测
 - **Mock 策略**：service 层测试 mock repository；controller 层测试 mock service
 
