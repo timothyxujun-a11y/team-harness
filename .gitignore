@@ -7,7 +7,6 @@
 
 # Claude Code 本地/个人设置（团队设置走 settings.json）
 .claude/settings.local.json
-.claude/skills/
 
 # WorkBuddy 本地记忆（不入仓库）
 .workbuddy/
