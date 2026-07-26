@@ -5,6 +5,21 @@
 
 ---
 
+## 0. 开发工作流（TDD + 分层顺序）
+
+新增/修改一个功能时，按以下顺序，核心逻辑走 TDD 红-绿-重构：
+
+1. **domain**：在 `domain/` 下新增或修改实体类、值对象
+2. **repository**：在 `repository/` 下定义数据访问接口（MyBatis Mapper / JPA）
+3. **service 测试（红）**：先为核心 service 方法写失败的单元测试（JUnit 4 + Mockito，mock repository），运行确认失败
+4. **service 实现（绿→重构）**：实现业务方法（事务管理 + 异常处理）让测试通过，再重构
+5. **controller**：在 `controller/` 下新增 REST 端点（仅参数校验 + 调 service），补 controller 单测（mock service）
+6. **code-review**：开发完成、单测全绿后，调用 `code-reviewer` 子 agent（`/review`）审查，处理「必须修复」项
+
+> 各层职责见 §1，测试细则（AAA / 命名 / 禁启 Spring 容器 / Mock 策略）见 §5。
+
+---
+
 ## 1. 分层架构职责
 
 ### 1.1 Controller 层
