@@ -15,7 +15,8 @@
       "Bash(ls *)",
       "Bash(cat *)",
       "Bash(java -version*)",
-      "Bash(echo *)"
+      "Bash(echo *)",
+      "mcp__codegraph__*"
     ],
     "deny": [
       "Bash(rm -rf *)",
@@ -32,8 +33,5 @@
       "Write(**/application-prod.yaml)",
       "Write(**/application-prod.properties)"
     ]
-  },
-  "env": {
-    "JAVA_HOME": "[CUSTOMIZE: 填写 JDK 路径或留空使用系统默认]"
   }
 }

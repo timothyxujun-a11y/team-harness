@@ -45,10 +45,11 @@ model: sonnet
 ### 4. 测试覆盖（test-coverage）
 
 对照 `docs/conventions.md` 第 5 节检查：
-- 新增的 Service 方法是否有对应单元测试？
+- 新增的 Service / Domain 核心逻辑是否有对应单元测试？（TDD：核心逻辑测试先行）
+- 是否存在「已写实现但无测试」的核心逻辑？
+- 测试是否覆盖正常路径 + 异常路径 + 边界值？
 - 测试命名是否符合 `should期望行为When条件` 规范？
 - 测试是否使用 AAA 结构？
-- 是否覆盖了异常路径？
 
 ### 5. 安全检查（security）
 

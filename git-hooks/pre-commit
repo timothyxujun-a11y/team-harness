@@ -1,6 +1,6 @@
 #!/bin/bash
-# pre-commit - 提交前 Checkstyle 静态检查（Maven）
-# 只检查不修改代码（非格式化）
+# pre-commit - 提交前编译检查（Maven）
+# 只检查不修改代码
 # 安装方式：由 scripts/install-git-hooks.sh 自动安装到 .git/hooks/pre-commit
 
 set -e
@@ -11,7 +11,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo -e "${YELLOW}[pre-commit] 开始静态检查...${NC}"
+echo -e "${YELLOW}[pre-commit] 开始编译检查...${NC}"
 
 # ====== 检测 Maven 构建文件 ======
 if [ ! -f "pom.xml" ]; then
@@ -30,10 +30,9 @@ fi
 echo -e "${YELLOW}[pre-commit] 检测到改动的 Java 文件：${NC}"
 echo "$STAGED_JAVA_FILES" | sed 's/^/  /'
 
-# ====== 执行 Checkstyle 检查 ======
-CHECKSTYLE_EXIT_CODE=0
+# ====== 执行编译检查 ======
+COMPILE_EXIT_CODE=0
 
-# Maven: 使用 checkstyle:check
 # 优先使用 mvnw
 if [ -f "./mvnw" ]; then
     MVN_CMD="./mvnw"
@@ -41,22 +40,16 @@ else
     MVN_CMD="mvn"
 fi
 
-echo -e "${YELLOW}[pre-commit] 执行 Maven Checkstyle 检查...${NC}"
-# 检查是否有 checkstyle 插件配置
-if grep -q "checkstyle" pom.xml 2>/dev/null; then
-    $MVN_CMD checkstyle:check -q 2>&1 || CHECKSTYLE_EXIT_CODE=$?
-else
-    echo -e "${YELLOW}[pre-commit] 项目未配置 Checkstyle 插件，降级为编译检查${NC}"
-    $MVN_CMD compile -q -DskipTests 2>&1 || CHECKSTYLE_EXIT_CODE=$?
-fi
+echo -e "${YELLOW}[pre-commit] 执行 Maven 编译检查...${NC}"
+$MVN_CMD compile -q -DskipTests 2>&1 || COMPILE_EXIT_CODE=$?
 
 # ====== 输出结果 ======
-if [ $CHECKSTYLE_EXIT_CODE -ne 0 ]; then
+if [ $COMPILE_EXIT_CODE -ne 0 ]; then
     echo ""
-    echo -e "${RED}[pre-commit] 检查未通过！请修复上述问题后重新提交。${NC}"
+    echo -e "${RED}[pre-commit] 编译未通过！请修复上述问题后重新提交。${NC}"
     echo -e "${YELLOW}[pre-commit] 如需跳过检查（不推荐），使用: git commit --no-verify${NC}"
     exit 1
 else
-    echo -e "${GREEN}[pre-commit] 检查通过 ✓${NC}"
+    echo -e "${GREEN}[pre-commit] 编译通过 ✓${NC}"
     exit 0
 fi

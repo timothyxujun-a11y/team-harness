@@ -25,11 +25,14 @@ BRANCH="main"
 SYNC_ITEMS=(
   "CLAUDE.md"
   "docs/conventions.md"
+  ".mcp.json"
   ".claude/settings.json"
   ".claude/agents"
   ".claude/commands"
+  ".claude/skills"
   "git-hooks/pre-commit"
   "scripts/install-git-hooks.sh"
+  "scripts/setup-codegraph.sh"
   "scripts/sync.sh"
 )
 
@@ -136,9 +139,13 @@ sync_file() {
       return
     fi
     cp -r "$src" "$dst"
-    if [ -f "$dst" ]; then chmod 644 "$dst"; fi
-    if [ "$(basename "$dst")" = "pre-commit" ] || [ "$(basename "$dst")" = "*.sh" ]; then
-      chmod +x "$dst" 2>/dev/null || true
+    # 脚本类文件保持可执行权限，其余文件设为 644
+    # 注意：case 的模式匹配才会做通配展开（*.sh），不能用 [ "x" = "*.sh" ] 字面比较
+    if [ -f "$dst" ]; then
+      case "$(basename "$dst")" in
+        pre-commit|*.sh) chmod +x "$dst" 2>/dev/null || true ;;
+        *)               chmod 644 "$dst" 2>/dev/null || true ;;
+      esac
     fi
     log_success "  [新增] $1"
     ((NEW_COUNT++)) || true

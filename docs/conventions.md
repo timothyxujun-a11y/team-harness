@@ -13,7 +13,7 @@
 |------|------|
 | 职责 | 参数校验、请求/响应封装、调用 Service |
 | 禁止 | 编写业务逻辑、直接调用 Repository、直接操作数据库 |
-| 注解 | `@RestController`、`@RequestMapping`、`@Validated`、Swagger `@Operation` |
+| 注解 | `@RestController`、`@RequestMapping`、`@Validated` |
 | 返回值 | 统一使用 `Result<T>` 包装（含 code、msg、data） |
 | 异常 | 不捕获业务异常（交给全局异常处理器）；只捕获并转换框架级异常 |
 
@@ -21,13 +21,11 @@
 // 正确示例
 @RestController
 @RequestMapping("/api/v1/orders")
-@Tag(name = "订单管理")
 public class OrderController {
 
     private final OrderService orderService;
 
     @GetMapping("/{id}")
-    @Operation(summary = "根据ID查询订单")
     public Result<OrderDetailDTO> getOrder(@PathVariable Long id) {
         return Result.success(orderService.getOrderById(id));
     }
@@ -65,7 +63,7 @@ public class OrderController {
 
 | 维度 | 规则 |
 |------|------|
-| 命名 | 请求：`XxxRequest`；响应：`XxxResponse`/`XxxDTO`；视图：`XxxVO` |
+| 命名 | 接收：`XxxDTO`；返回：`XxxVO` |
 | 校验 | Request 使用 `@Valid` + JSR-303 注解（`@NotNull`、`@Size` 等） |
 | 转换 | 使用 MapStruct 或手动转换，禁止直接暴露 Domain 实体 |
 
@@ -205,6 +203,22 @@ public class OrderServiceTest {
 5. **不测试 getter/setter**：只测试包含逻辑的方法
 6. **方法长度**：单个测试方法不超过 30 行
 
+### 5.4 TDD 流程（核心逻辑强制）
+
+Service / Domain 核心逻辑必须按**红-绿-重构**循环开发：
+
+1. **红**：先写一个失败的单元测试（描述期望行为），运行 `mvn test -Dtest=XxxTest#method` 确认它因功能未实现而失败
+2. **绿**：写最小实现让测试通过，运行确认全绿
+3. **重构**：在测试保护下优化代码，保持全绿
+
+**适用范围**：
+
+- **Service / Domain**：强制 TDD
+- **Controller**：补单测（mock service），不强制 TDD
+- **Repository**：因禁启 Spring 容器，不纳入 TDD（数据访问正确性靠后续集成测试保障）
+
+> 禁止「先写实现再补测试」——测试后置不算 TDD。
+
 ---
 
 ## 6. API 设计规范
@@ -212,15 +226,14 @@ public class OrderServiceTest {
 1. **RESTful 风格**：资源用名词、操作用 HTTP 方法
 2. **版本控制**：路径中携带版本号 `/api/v1/...`
 3. **统一响应**：`Result<T>` 包装，含 `code`、`msg`、`data`
-4. **Swagger 注解**：所有接口必须标注 `@Operation`、`@Parameter`
-5. **分页参数**：统一使用 `pageNum`（从 1 开始）和 `pageSize`
-6. **时间格式**：ISO 8601（`yyyy-MM-dd'T'HH:mm:ss.SSSZ`）
+4. **分页参数**：统一使用 `pageNum`（从 1 开始）和 `pageSize`
+5. **时间格式**：ISO 8601（`yyyy-MM-dd'T'HH:mm:ss.SSSZ`）
 
 ---
 
 ## 7. 配置管理
 
 1. **禁止硬编码**：所有环境相关的配置（DB 连接、Redis 地址等）使用 `${}` 占位符
-2. **Profile 隔离**：`application-dev.yml`、`application-test.yml`、`application-prod.yml`
-3. **敏感信息**：密码、Token 通过环境变量或配置中心注入，不写入配置文件
-4. **默认值**：关键配置项提供合理默认值作为降级方案
+2. **敏感信息**：密码、Token 通过环境变量或配置中心注入，不写入配置文件
+3. **默认值**：关键配置项提供合理默认值作为降级方案
+4. **配置信息**：配置信息需要单独保存在配置类中（xxxProperties.java), 不能使用@Value散落在各个文件中
