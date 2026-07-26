@@ -15,8 +15,7 @@
       "Bash(ls *)",
       "Bash(cat *)",
       "Bash(java -version*)",
-      "Bash(echo *)",
-      "mcp__codegraph__*"
+      "Bash(echo *)"
     ],
     "deny": [
       "Bash(rm -rf *)",

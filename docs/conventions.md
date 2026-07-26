@@ -1,7 +1,8 @@
 # 编码规范详细文档
 
 > 本文档被 `CLAUDE.md` 引用，是 AI 和团队开发者共同遵守的详细规范。
-> 修改本文件等同于修改团队契约，需经 Code Review。
+> **面向消息驱动项目**（入口为 MQ 消费者，无 HTTP Controller）。修改本文件等同于修改团队契约，需经 Code Review。
+> 文中以本项目（`com.yl.track.bus`，rabbit/rocket 入口）为例。
 
 ---
 
@@ -9,78 +10,80 @@
 
 新增/修改一个功能时，按以下顺序，核心逻辑走 TDD 红-绿-重构：
 
-1. **domain**：在 `domain/` 下新增或修改实体类、值对象
-2. **repository**：在 `repository/` 下定义数据访问接口（MyBatis Mapper / JPA）
-3. **service 测试（红）**：先为核心 service 方法写失败的单元测试（JUnit 4 + Mockito，mock repository），运行确认失败
-4. **service 实现（绿→重构）**：实现业务方法（事务管理 + 异常处理）让测试通过，再重构
-5. **controller**：在 `controller/` 下新增 REST 端点（仅参数校验 + 调 service），补 controller 单测（mock service）
+1. **entity**：在 `entity/` 下新增/修改数据库实体（对应表结构）
+2. **mapper**：在 `mapper/` 下定义 MyBatis Mapper 接口 + `resources/mapper/*.xml`
+3. **service 测试（红）**：先为核心 service/impl 方法写失败的单元测试（JUnit 4 + Mockito，mock mapper），确认失败
+4. **service 实现（绿→重构）**：实现业务方法（事务 + 异常）让测试通过，再重构
+5. **消息入口**：在 `rabbit/`（Ops\*Receiver）或 `rocket/`（\*Consumer）新增消费者，仅做消息解析 + 调 service（**薄层，禁业务逻辑**）
 6. **code-review**：开发完成、单测全绿后，调用 `code-reviewer` 子 agent（`/review`）审查，处理「必须修复」项
 
-> 各层职责见 §1，测试细则（AAA / 命名 / 禁启 Spring 容器 / Mock 策略）见 §5。
+> 各层职责见 §1，测试细则见 §5。
 
 ---
 
 ## 1. 分层架构职责
 
-### 1.1 Controller 层
-
-| 维度 | 规则 |
-|------|------|
-| 职责 | 参数校验、请求/响应封装、调用 Service |
-| 禁止 | 编写业务逻辑、直接调用 Repository、直接操作数据库 |
-| 注解 | `@RestController`、`@RequestMapping`、`@Validated` |
-| 返回值 | 统一使用 `Result<T>` 包装（含 code、msg、data） |
-| 异常 | 不捕获业务异常（交给全局异常处理器）；只捕获并转换框架级异常 |
-
-```java
-// 正确示例
-@RestController
-@RequestMapping("/api/v1/orders")
-public class OrderController {
-
-    private final OrderService orderService;
-
-    @GetMapping("/{id}")
-    public Result<OrderDetailDTO> getOrder(@PathVariable Long id) {
-        return Result.success(orderService.getOrderById(id));
-    }
-}
+```
+rabbit/rocket（消息入口） → service → mapper（持久化）
+                          ↘ entity（数据模型）
 ```
 
-### 1.2 Service 层
+### 1.1 消息入口层（`rabbit/` `rocket/`）
 
 | 维度 | 规则 |
 |------|------|
-| 职责 | 核心业务逻辑、事务管理、调用 Repository |
-| 禁止 | 直接写 SQL、包含 HTTP 相关代码、直接操作 HttpServletRequest |
-| 事务 | `@Transactional` 加在 Service 方法上， readOnly 标注查询方法 |
-| 异常 | 捕获外部调用异常并转换为 `BusinessException` |
+| 职责 | 消息接收、反序列化、参数校验、调用 service |
+| 技术 | rabbit：Spring Cloud Stream（`@EnableBinding` + `@StreamListener`，channel 集中在 `XxxStreamInterface`）；rocket：`@RocketMQMessageListener` + `RocketMQListener<String>` |
+| 链路 | 入口方法必须标 `@TraceIdLog`（见 §4.2） |
+| 异常 | 按 §3 分类处理（可重试抛出 / 不可重试捕获） |
+| **禁止** | **编写聚合/业务逻辑**（反例：`OpsArrivalScanReceiver.onMessage` 写整段聚合）—— 业务必须下沉到 service |
 
-### 1.3 Repository 层
-
-| 维度 | 规则 |
-|------|------|
-| 职责 | 数据访问，MyBatis Mapper 或 JPA Repository |
-| 禁止 | 包含业务判断逻辑、调用 Service |
-| 命名 | MyBatis: `XxxMapper`；JPA: `XxxRepository` |
-| SQL | MyBatis XML 中使用参数化查询，禁止字符串拼接 SQL |
-
-### 1.4 Domain 层
+### 1.2 Service 层（`service/` 接口 + `service/impl/` 实现）
 
 | 维度 | 规则 |
 |------|------|
-| 职责 | 实体类、值对象、领域事件 |
-| 禁止 | 包含业务方法（贫血模型）或依赖上层 |
-| 注解 | JPA 实体使用 `@Entity`；MyBatis 实体为纯 POJO |
-| Lombok | 使用 `@Data` 或 `@Getter/@Setter`，显式标注 |
+| 命名 | 接口 `I*Service`（`IOmsOrderService`），实现 `*ServiceImpl`（`OmsOrderServiceImpl`） |
+| 职责 | 核心业务逻辑、调用 mapper、调用下游 MQ、事务管理 |
+| 事务 | **条件强制**：多表/多数据源写入必加 `@Transactional`；纯查询标 `readOnly=true`；单消息单条写入可不加 |
+| 异常 | 捕获外部调用异常并转换（见 §3） |
+| **禁止** | 直接操作 `HttpServletRequest`；service 里散落 `@Value`（见 §6） |
 
-### 1.5 DTO 层
+### 1.3 数据访问层（`mapper/`）
 
 | 维度 | 规则 |
 |------|------|
-| 命名 | 接收：`XxxDTO`；返回：`XxxVO` |
-| 校验 | Request 使用 `@Valid` + JSR-303 注解（`@NotNull`、`@Size` 等） |
-| 转换 | 使用 MapStruct 或手动转换，禁止直接暴露 Domain 实体 |
+| 技术 | MyBatis + MyBatis-Plus，`@Mapper` 接口 + `resources/mapper/*.xml` |
+| 命名 | `XxxMapper`（`OmsOrderMapper`） |
+| SQL | XML 中参数化查询 `#{}`，**禁止字符串拼接 `${}`**（SQL 注入） |
+| **禁止** | 业务判断逻辑、调用 service |
+
+### 1.4 实体层（`entity/`）
+
+| 维度 | 规则 |
+|------|------|
+| 职责 | 数据库实体，对应表结构，纯 POJO（贫血模型） |
+| 注解 | `@TableName`（MyBatis-Plus）；字段 `@TableField` 等 |
+| Lombok | `@Data` 或 `@Getter/@Setter`，显式标注 |
+| **禁止** | 业务方法；引用 service/mapper/入口层 |
+
+> 无独立 `domain/` 层；值对象/领域事件按需放 `entity/` 或 `dto/`。
+
+### 1.5 DTO 层（`dto/`）
+
+| 维度 | 规则 |
+|------|------|
+| 用途 | 消息载荷、service 间传输、下游 MQ 发送体 |
+| 命名 | **后缀必须与所在包一致**：`dto/` 下只能 `*DTO`（入参）/ `*VO`（出参）；`entity/` 下只能 `*Entity` |
+| 转换 | 优先 MapStruct；消息驱动/小项目可手写 converter（`XxxConverter.toEntity(...)`）集中放 `convert/` 包，**禁止散落 setter** |
+| 反例 | `dto/ArrivalScanEntity`（应为 `ArrivalScanDTO`）—— 命名与包冲突，待治理 |
+
+### 1.6 其他层
+
+- **`enums/`**：状态码、类型枚举（`*Enum`，枚举值 `ALL_CAPS`）
+- **`config/`**：Spring 配置、Bean 定义（MQ 模板、序列化、ID 生成）
+- **`base/`**：常量（**禁 interface 放常量**，强制 `final class XxxConstant` + `private` 构造；MQ Topic 名等）
+- **`utils/`**：纯静态工具（`DateTimeUtils` 等）
+- **`trace/`**（独立，与业务包并行）：链路追踪（见 §4.2）
 
 ---
 
@@ -88,70 +91,62 @@ public class OrderController {
 
 | 类型 | 规则 | 示例 |
 |------|------|------|
-| 类名 | UpperCamelCase | `OrderService`、`PaymentCallbackHandler` |
-| 方法/变量 | lowerCamelCase | `getOrderById`、`orderTimeout` |
+| 类名 | UpperCamelCase | `OmsOrderService`、`OpsArrivalScanReceiver` |
+| 接口/实现 | `I*Service` / `*ServiceImpl` | `IOmsOrderService` / `OmsOrderServiceImpl` |
+| 方法/变量 | lowerCamelCase | `getOrderById`、`traceId` |
 | 常量 | ALL_CAPS + 下划线 | `MAX_RETRY_COUNT`、`DEFAULT_PAGE_SIZE` |
-| 包名 | 全小写，按业务域 | `com.company.order.service` |
-| 枚举值 | ALL_CAPS + 下划线 | `OrderStatus.PENDING_PAYMENT` |
-| 数据库表 | snake_case | `order_detail`、`payment_record` |
-| 数据库字段 | snake_case | `create_time`、`user_id` |
-| API 路径 | `/api/v{版本}/{资源名}/{操作}` | `/api/v1/orders/{id}/items` |
+| 常量类 | **`final class` + `private` 构造**（禁 interface 常量） | `final class Constant { private Constant() {} ... }` |
+| 枚举 | `*Enum`，值 ALL_CAPS | `OrderStatusEnum.PENDING_PAYMENT` |
+| 包名 | 全小写，按业务域 | `com.yl.track.bus.service` |
+| 数据库表 | snake_case | `trace_push`、`oms_order` |
+| 数据库字段 | snake_case | `create_time`、`waybill_no` |
 
 ---
 
-## 3. 异常处理
+## 3. 异常处理（MQ 场景）
 
-### 3.1 异常体系
+消息驱动项目无 HTTP 响应，异常策略围绕 **MQ 重试**：
 
-```
-RuntimeException
-  └── BusinessException（自定义业务异常）
-        ├── errorCode: ErrorCode 枚举
-        └── message: 用户可读的错误描述
-```
+### 3.1 两类异常
+
+| 类型 | 处理 | 示例 |
+|------|------|------|
+| **可重试异常**（瞬时） | 直接抛出，触发 MQ 重试 | DB 死锁、下游超时、网络抖动 |
+| **不可重试异常**（业务/毒消息） | `catch` + WARN 日志 + 丢弃或转死信，**避免无限重试** | 参数校验失败、消息格式错误、业务状态非法 |
 
 ### 3.2 规则
 
-1. **统一业务异常**：所有业务错误抛出 `BusinessException`，禁止直接抛 `RuntimeException`
-2. **全局处理器**：使用 `@ControllerAdvice` 统一捕获并返回 `Result<Void>`
-3. **错误码管理**：使用 `ErrorCode` 枚举，禁止魔法数字
-4. **外部调用**：DB、RPC、HTTP 调用必须 try-catch 并转换为 `BusinessException`
-5. **不吞异常**：catch 块中必须有日志记录或重新抛出
-
-```java
-// 正确示例
-public OrderDTO getOrder(Long id) {
-    try {
-        Order order = orderMapper.selectById(id);
-        if (order == null) {
-            throw new BusinessException(ErrorCode.ORDER_NOT_FOUND);
-        }
-        return OrderConverter.toDTO(order);
-    } catch (BusinessException e) {
-        throw e;
-    } catch (Exception e) {
-        log.error("查询订单失败, id={}", id, e);
-        throw new BusinessException(ErrorCode.SYSTEM_ERROR, e);
-    }
-}
-```
+1. **禁裸 `throw new RuntimeException`**（反例：项目中 10 处 RocketMQ 发送失败直接 throw）—— 用具体异常或自定义业务异常
+2. 自定义业务异常（`BusinessException`）携带错误码 + 上下文，便于排障
+3. 外部调用（DB / RPC / HTTP / 下游 MQ）必须 try-catch 并转换为「可重试/不可重试」
+4. 不吞异常：catch 块必须有日志（含 traceId）或重新抛出
+5. MQ 发送失败：按语义决定重试抛出或落库补偿，**禁止静默丢失**
 
 ---
 
 ## 4. 日志规范
 
+### 4.1 基础
+
 | 场景 | 级别 | 要求 |
 |------|------|------|
-| 方法入口/出口 | DEBUG | 记录入参和返回值（敏感信息脱敏） |
-| 业务异常 | WARN | 记录错误码和业务上下文 |
-| 系统异常 | ERROR | 记录完整异常堆栈 |
-| 外部调用 | INFO | 记录调用目标、耗时、结果状态 |
+| 方法入口/出口 | DEBUG | 入参/返回值（敏感信息脱敏） |
+| 业务异常（不可重试） | WARN | 错误码 + 业务上下文 + traceId |
+| 系统异常（可重试） | ERROR | 完整堆栈 + traceId |
+| 外部调用 | INFO | 调用目标、耗时、结果状态 |
 
 规则：
-1. 使用 SLF4J（`@Slf4j`），不直接使用 `System.out.println`
-2. 日志使用占位符 `{}`，不使用字符串拼接
-3. ERROR 级别日志必须包含异常对象：`log.error("msg", e)`
-4. 敏感信息（密码、Token、身份证号）脱敏后记录
+1. SLF4J（`@Slf4j`），禁 `System.out.println`
+2. 占位符 `{}`，禁字符串拼接
+3. ERROR 必须含异常对象：`log.error("msg", e)`
+4. 敏感信息（密码/Token/身份证号）脱敏
+
+### 4.2 链路追踪 traceId（核心，消息驱动项目排障生命线）
+
+1. 所有 MQ 入口方法（Receiver/Consumer）标注 `@TraceIdLog`（或等价切面），通过 **MDC** 注入 traceId
+2. `logback-spring.xml` 的 pattern 必须含 `%X{traceId}`
+3. 一个消息处理**全链路**（入口 → service → mapper → 下游 MQ 发送）共用同一 traceId
+4. 设施在 `trace/` 包：`LogTraceIdAspect`（`@Around` AOP）、`@TraceIdLog` 注解、`TraceUtils`
 
 ---
 
@@ -163,92 +158,71 @@ public OrderDTO getOrder(Long id) {
 - Mockito（`@Mock`、`@InjectMocks`、`@RunWith(MockitoJUnitRunner.class)`、`when().thenReturn()`）
 - AssertJ（`assertThat(actual).isEqualTo(expected)`）
 
-### 5.2 命名与结构
+### 5.2 强制要求
+
+1. **项目必须存在 `src/test/` 目录**（即使空骨架），避免「引了依赖却零测试」
+2. **核心 service/impl 方法必须有单测**
+3. **禁启 Spring 容器**：纯单测，Mock 隔离依赖。禁 `@SpringBootTest`、`@RunWith(SpringRunner.class)`、`@ContextConfiguration`
+4. **增量代码单测覆盖率 > 80%**（见 §5.4）
+
+### 5.3 命名与结构（AAA）
 
 ```java
 @RunWith(MockitoJUnitRunner.class)
-public class OrderServiceTest {
+public class OmsOrderServiceImplTest {
 
     @Mock
-    private OrderMapper orderMapper;
+    private OmsOrderMapper omsOrderMapper;
 
     @InjectMocks
-    private OrderService orderService;
-
-    @Before
-    public void setUp() {
-        // 初始化测试数据（如有公共 fixture）
-    }
+    private OmsOrderServiceImpl omsOrderService;
 
     @Test
     public void shouldReturnOrderWhenIdExists() {
         // Arrange
-        Order order = new Order();
+        OmsOrder order = new OmsOrder();
         order.setId(1L);
-        order.setStatus(OrderStatus.PENDING_PAYMENT);
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        when(omsOrderMapper.selectById(1L)).thenReturn(order);
 
         // Act
-        OrderDTO result = orderService.getOrder(1L);
+        OmsOrder result = omsOrderService.getById(1L);
 
         // Assert
         assertThat(result.getId()).isEqualTo(1L);
-        assertThat(result.getStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
-    }
-
-    @Test
-    public void shouldThrowWhenOrderNotFound() {
-        // Arrange
-        when(orderMapper.selectById(999L)).thenReturn(null);
-
-        // Act & Assert
-        assertThatThrownBy(() -> orderService.getOrder(999L))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("订单不存在");
     }
 }
 ```
 
-### 5.3 规则
+- 命名：`should期望行为When条件`（`shouldReturnOrderWhenIdExists`）
+- 三段式：Arrange / Act / Assert，用注释分隔
+- 单个测试方法不超过 30 行
 
-1. **AAA 结构**：每个测试方法分为 Arrange（准备）、Act（执行）、Assert（断言）三段，用注释分隔
-2. **禁止启动 Spring 容器**：所有单测必须是纯单元测试，通过 Mock 隔离依赖。禁止使用 `@SpringBootTest`、`@RunWith(SpringRunner.class)`、`@ContextConfiguration` 等注解。Service 层测试 mock Repository，不依赖数据库、缓存等外部资源
-3. **测试隔离**：每个测试方法独立，不依赖执行顺序，不共享可变状态
-4. **边界覆盖**：正常路径 + 空值 + 边界值 + 异常路径
-5. **不测试 getter/setter**：只测试包含逻辑的方法
-6. **方法长度**：单个测试方法不超过 30 行
+### 5.4 增量覆盖率 > 80%
 
-### 5.4 TDD 流程（核心逻辑强制）
+- **工具**：JaCoCo（全量报表）+ diff-cover（增量卡阈值）
+- **口径**：增量**行覆盖**（本次 diff 的新增/修改行）；存量代码不强求
+- **校验**：pre-push hook 跑 `mvn -DskipTests=false test` → `jacoco.xml` → `diff-cover --fail-under=80`（接入见 README「增量覆盖率」）
+- 从 0 起步友好：只要求新写的代码有测试
 
-Service / Domain 核心逻辑必须按**红-绿-重构**循环开发：
+### 5.5 TDD 范围（按层）
 
-1. **红**：先写一个失败的单元测试（描述期望行为），运行 `mvn test -Dtest=XxxTest#method` 确认它因功能未实现而失败
-2. **绿**：写最小实现让测试通过，运行确认全绿
-3. **重构**：在测试保护下优化代码，保持全绿
+- **service/impl + converter + utils**：强制 TDD（红-绿-重构）
+- **消息入口（Receiver/Consumer）**：补单测（mock service），不强制 TDD
+- **mapper**：因禁启 Spring 容器，不纳入（数据访问正确性靠后续集成测试）
 
-**适用范围**：
-
-- **Service / Domain**：强制 TDD
-- **Controller**：补单测（mock service），不强制 TDD
-- **Repository**：因禁启 Spring 容器，不纳入 TDD（数据访问正确性靠后续集成测试保障）
-
-> 禁止「先写实现再补测试」——测试后置不算 TDD。
+> 禁「先写实现再补测试」—— 测试后置不算 TDD。
 
 ---
 
-## 6. API 设计规范
+## 6. 配置管理
 
-1. **RESTful 风格**：资源用名词、操作用 HTTP 方法
-2. **版本控制**：路径中携带版本号 `/api/v1/...`
-3. **统一响应**：`Result<T>` 包装，含 `code`、`msg`、`data`
-4. **分页参数**：统一使用 `pageNum`（从 1 开始）和 `pageSize`
-5. **时间格式**：ISO 8601（`yyyy-MM-dd'T'HH:mm:ss.SSSZ`）
+| 类型 | 规则 |
+|------|------|
+| 业务参数（topic/group/阈值/开关） | **强制** `@ConfigurationProperties` + `xxxProperties.java` |
+| 基础设施 Bean 装配参数（zkUrl 等） | 允许 `@Value`，但必须在 `@Configuration` 配置类内集中使用 |
+| MQ 配置（topic/nameServer/accessKey） | `${}` 占位 + 配置中心 |
+| **禁止** | service 层散落 `@Value` |
+| 敏感信息 | 环境变量 / 配置中心注入，不写配置文件 |
+| 默认值 | 关键配置提供合理默认值作降级 |
 
----
-
-## 7. 配置管理
-
-1. **禁止硬编码**：所有环境相关的配置（DB 连接、Redis 地址等）使用 `${}` 占位符
-2. **敏感信息**：密码、Token 通过环境变量或配置中心注入，不写入配置文件
-3. **默认值**：关键配置项提供合理默认值作为降级方案
-4. **配置信息**：配置信息需要单独保存在配置类中（xxxProperties.java), 不能使用@Value散落在各个文件中
+> 反例：`IdGeneratorConfig` 用散落 `@Value` 且无 Properties 类 —— 业务参数应迁移到 `xxxProperties`。

@@ -17,6 +17,3 @@ Thumbs.db
 
 # Harness upstream clone (sync.sh 产物)
 .harness-upstream/
-
-# codegraph 索引产物（SQLite，per-machine，不入库）
-.codegraph/

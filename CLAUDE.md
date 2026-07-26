@@ -1,7 +1,7 @@
 # Claude Code 项目约定总纲
 
 > **按需加载地图**：本文件仅放总纲（常驻上下文）。所有编码细则按需查阅 `docs/conventions.md`：
-> 分层职责 / 命名 / 异常 / 日志 / 测试 / API 设计 / 配置管理 / 开发工作流（TDD）
+> 分层职责 / 命名 / 异常 / 日志 / 测试 / 配置管理 / 开发工作流（TDD）
 > - 历史设计文档（已完成） → `docs/superpowers/specs/archive/`
 
 ## 项目身份
@@ -53,20 +53,6 @@ test(user): 补充 UserService 核心方法单元测试
 7. **安全红线**：禁止硬编码密钥/密码/Token；涉及 DDL 变更必须先输出 SQL 供人工审核
 8. **核心逻辑走 TDD**：新增/修改 Service、Domain 核心逻辑时遵循红-绿-重构（细则见 `docs/conventions.md` 开发工作流）
 9. **开发后必过 code-review**：开发完成且单测通过后，必须调用 `code-reviewer` 子 agent（`/review`）审查改动，「必须修复」项处理完毕前不得报告任务完成
-
-## codegraph 代码图谱（可选增强）
-
-<!-- codegraph:start -->
-本项目可选接入 [codegraph](https://github.com/colbymachenry/codegraph)：本地优先的代码知识图谱 MCP server，全支持 Java + Spring 路由（`@GetMapping` 等），把逐文件 grep/Read 探索压缩成一次调用。
-
-- **主 agent 无需关注本段**：MCP server 连接时自动下发使用指引
-- **子 agent（code-reviewer/test-writer）与非 MCP 场景**：当存在 `.codegraph/` 索引时，优先用 `codegraph_explore`（CLI 等价 `codegraph explore`）回答「X 是怎么工作的」、调用链（X 如何到达 Y）、改动影响面
-- **一次调用即返回**相关符号源码 + 调用路径 + 影响半径，返回的源码视为已读，**不要再用 grep/Read 复核**
-- **编辑后留意**响应中的 ⚠️ staleness banner，对 pending 文件直接 `Read` 取最新内容
-- **无索引时**（未 `codegraph init`）回退内置 grep/Read；建索引是人工决定，不要自作主张初始化
-
-接入步骤见 README「接入 codegraph」章节。
-<!-- codegraph:end -->
 
 ## grill-me 需求拷问（可选）
 

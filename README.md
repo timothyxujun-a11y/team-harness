@@ -15,7 +15,6 @@
 harness-project/
 ├── README.md                          # 本文件：方案总览 + 适配指南
 ├── CLAUDE.md                          # 【核心】约定总纲（AI 首先读取）
-├── .mcp.json                          # 团队共享 MCP 配置（codegraph）
 ├── docs/
 │   ├── conventions.md                 # 详细编码规范（CLAUDE.md 引用）
 │   └── superpowers/specs/             # 设计文档
@@ -35,8 +34,7 @@ harness-project/
 │       └── archive/                   # 已完成需求归档
 ├── scripts/
 │   ├── sync.sh                        # 从 team-harness 仓库同步配置
-│   ├── install-git-hooks.sh           # 一键安装 git pre-commit hook
-│   └── setup-codegraph.sh             # 一键接入 codegraph 代码图谱
+│   └── install-git-hooks.sh           # 一键安装 git pre-commit hook
 └── git-hooks/
     └── pre-commit                     # 提交前编译检查
 ```
@@ -100,37 +98,6 @@ git commit -m "chore: 接入团队 AI 工程化规范"
 | `CLAUDE.md` | `[CUSTOMIZE: 业务简介]` | 如 `订单交易核心服务` |
 | `.claude/settings.json` | （可选，非占位）`env.JAVA_HOME` | 默认继承系统 `JAVA_HOME`；需指定时自行添加 `"env": {"JAVA_HOME": "/path/to/jdk"}` |
 
-## 接入 codegraph（可选）
-
-[codegraph](https://github.com/colbymchenry/codegraph) 是本地优先的代码知识图谱 MCP server，把 Claude Code 逐文件 grep/Read 的代码探索压缩成一次调用，全支持 **Java + Spring 路由**（`@GetMapping` 等）。本骨架已预置团队共享的 `.mcp.json` 与权限，接入只需「装 CLI + 建索引」。
-
-> 为何不直接用官方 `codegraph install -l local`？它会往项目写入个人依赖（`npx @colbymchenry/...`），污染团队共享文件（见 [Issue #243](https://github.com/colbymchenry/codegraph/issues/243)）。本骨架统一维护干净的 `.mcp.json`（`command: codegraph`），随 `sync.sh` 分发，规避该问题。
-
-### 步骤
-
-1. **安装 CLI**（任选其一，全局）：
-
-   ```bash
-   # 自包含安装（无需 Node，macOS / Linux）
-   curl -fsSL https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh | sh
-   # 或 npm
-   npm i -g @colbymchenry/codegraph
-   ```
-
-   安装后**打开新终端**使 `codegraph` 进入 PATH。
-
-2. **建索引**（项目根执行，脚本会自动检测 CLI、补全 `.gitignore`、运行 `codegraph init`）：
-
-   ```bash
-   ./scripts/setup-codegraph.sh
-   ```
-
-3. **重启 Claude Code**：加载 `.mcp.json`，首次会提示信任该项目的 MCP server，选 yes；`/mcp` 应显示 `codegraph` connected。
-
-完成后，Claude Code 会自动用 `codegraph_explore` 做结构化探索（一次调用返回相关源码 + 调用路径 + 影响半径），已预置 `mcp__codegraph__*` 权限、无需确认。索引随文件改动自动同步，无需手动重跑。
-
-> **分发边界**：`.mcp.json` 由 `sync.sh` 同步进项目；`codegraph` CLI 与 `.codegraph/` 索引是每台机器各自的，不进仓库（`.codegraph/` 已被忽略）。
-
 ## 常用命令速查
 
 ### Claude Code 命令
@@ -155,10 +122,62 @@ mvn clean package -DskipTests     # 打包
 ### Git Hooks
 
 ```bash
-./scripts/install-git-hooks.sh     # 安装 pre-commit hook
-git commit --no-verify             # 跳过检查（不推荐）
-rm -f .git/hooks/pre-commit        # 卸载 hook
+./scripts/install-git-hooks.sh                    # 装 pre-commit（编译）+ pre-push（增量覆盖率）
+git commit --no-verify                            # 跳过提交检查（不推荐）
+git push --no-verify                              # 跳过推送检查（不推荐）
+rm -f .git/hooks/pre-commit .git/hooks/pre-push   # 卸载
 ```
+
+## 增量单测覆盖率（> 80%）
+
+骨架通过 **JaCoCo（全量报表）+ diff-cover（增量卡阈值）** 实现「增量行覆盖率 > 80%」，在 **pre-push** hook 校验。对从 0 起步的项目友好：只要求新写的代码有测试，存量不强求。
+
+### 接入步骤
+
+1. **pom.xml 加 JaCoCo**（`prepare-agent` + `report`，**不用 `check`**）：
+
+   ```xml
+   <plugin>
+     <groupId>org.jacoco</groupId>
+     <artifactId>jacoco-maven-plugin</artifactId>
+     <version>0.8.12</version>
+     <executions>
+       <execution>
+         <id>prepare-agent</id>
+         <goals><goal>prepare-agent</goal></goals>
+       </execution>
+       <execution>
+         <id>report</id>
+         <phase>verify</phase>
+         <goals><goal>report</goal></goals>
+       </execution>
+     </executions>
+   </plugin>
+   ```
+
+   > Java 8 项目用 0.8.x（0.8.11 / 0.8.12），勿用 0.9.x。
+
+2. **装 diff-cover**（全局，一次性）：`pip install diff-cover`
+
+3. **安装 hook**：`./scripts/install-git-hooks.sh`（同时装 pre-commit + pre-push）
+
+4. **skipTests 处理**：若 pom 的 `maven-surefire-plugin` 配了 `<skipTests>true</skipTests>`，pre-push 会用 `-DskipTests=false` 强制覆盖（不改 pom 默认）。
+
+### pre-push 工作流
+
+```
+git push → 检查 diff-cover（缺失则提示并跳过，不阻塞）
+       → mvn -DskipTests=false test → target/site/jacoco/jacoco.xml
+       → diff-cover jacoco.xml --compare-branch=origin/main --fail-under=80
+       → 退出码非 0 阻断 push
+```
+
+### 注意
+
+- 基线分支约定 `origin/main`，推送前确保已 `git fetch`
+- diff-cover 统计**增量行覆盖**，与 JaCoCo 全量 instruction 口径不同
+- 未装 diff-cover 的开发机会跳过校验（不阻塞），团队统一安装后生效
+- 私有仓库首次拉依赖慢，pre-push 仅在 `.m2` warm 后顺畅
 
 ## 工作流：规范驱动开发（SDD）
 
@@ -209,14 +228,12 @@ rm -f .git/hooks/pre-commit        # 卸载 hook
 | 组件 | 来源 | 许可 |
 |------|------|------|
 | grill-me / grilling | [mattpocock/skills](https://github.com/mattpocock/skills) | MIT · Copyright (c) 2026 Matt Pocock |
-| codegraph | [colbymchenry/codegraph](https://github.com/colbymchenry/codegraph) | MIT（仅内置配置接入，CLI 由成员自行安装） |
 
 ## 版本
 
 - v1.8.0 (2026-07-25)：移除 Checkstyle 依赖（pre-commit 改纯编译检查）、删除 Swagger 注解要求、统一 API 入参/出参命名为 XxxDTO/XxxVO
 - v1.7.0 (2026-07-25)：开发流程加入 TDD（核心逻辑）与开发后子 agent code-review 约定
 - v1.6.0 (2026-07-25)：新增 grill-me 需求拷问 skill（MIT，纳入 sync 分发）
-- v1.5.0 (2026-07-24)：新增 codegraph 集成（`.mcp.json` + 权限 + CLAUDE.md 指引 + `scripts/setup-codegraph.sh`，纳入 sync.sh 分发）
 - v1.4.0 (2026-07-24)：新增 `config/checkstyle.xml` 规则模板，pre-commit 检查名副其实；修复 sync.sh 同步后脚本无执行权限的 bug
 - v1.3.0 (2026-07-23)：前置条件改为 Java 8+；测试框架改为 JUnit 4；强制单测禁止启动 Spring 容器
 - v1.2.0 (2026-07-23)：构建工具固定为 Maven，移除 Gradle 支持

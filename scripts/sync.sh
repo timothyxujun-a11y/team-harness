@@ -6,7 +6,6 @@
 #   ./scripts/sync.sh --check    # 仅检查有哪些更新，不实际修改
 #   ./scripts/sync.sh --force    # 强制覆盖所有文件（不推荐，会丢失 [CUSTOMIZE] 填写值）
 #   ./scripts/sync.sh --hooks    # 同步后自动运行 install-git-hooks.sh
-#   ./scripts/sync.sh --with-codegraph  # 同时同步 codegraph 配置（.mcp.json / setup-codegraph.sh，默认跳过）
 #   ./scripts/sync.sh --help     # 显示帮助
 #
 # 首次使用（目标项目还没有 sync.sh）：
@@ -26,14 +25,13 @@ BRANCH="main"
 SYNC_ITEMS=(
   "CLAUDE.md"
   "docs/conventions.md"
-  ".mcp.json"
   ".claude/settings.json"
   ".claude/agents"
   ".claude/commands"
   ".claude/skills"
   "git-hooks/pre-commit"
+  "git-hooks/pre-push"
   "scripts/install-git-hooks.sh"
-  "scripts/setup-codegraph.sh"
   "scripts/sync.sh"
 )
 
@@ -60,14 +58,12 @@ log_diff()    { echo -e "${CYAN}[DIFF]${NC} $1"; }
 # ====== 参数解析 ======
 MODE="sync"       # sync | check | force
 INSTALL_HOOKS=false
-WITH_CODEGRAPH=false
 
 for arg in "$@"; do
   case "$arg" in
     --check)  MODE="check" ;;
     --force)  MODE="force" ;;
     --hooks)  INSTALL_HOOKS=true ;;
-    --with-codegraph) WITH_CODEGRAPH=true ;;
     --help|-h)
       sed -n '2,20p' "$0"
       exit 0
@@ -146,7 +142,7 @@ sync_file() {
     # 注意：case 的模式匹配才会做通配展开（*.sh），不能用 [ "x" = "*.sh" ] 字面比较
     if [ -f "$dst" ]; then
       case "$(basename "$dst")" in
-        pre-commit|*.sh) chmod +x "$dst" 2>/dev/null || true ;;
+        pre-commit|pre-push|*.sh) chmod +x "$dst" 2>/dev/null || true ;;
         *)               chmod 644 "$dst" 2>/dev/null || true ;;
       esac
     fi
@@ -221,16 +217,6 @@ log_info "========== 开始同步 =========="
 echo ""
 
 for item in "${SYNC_ITEMS[@]}"; do
-  # codegraph 为可选增强：默认跳过，需 --with-codegraph 显式启用
-  if [ "$WITH_CODEGRAPH" != "true" ]; then
-    case "$item" in
-      .mcp.json|scripts/setup-codegraph.sh)
-        log_info "  [跳过] ${item}（codegraph 可选，加 --with-codegraph 启用）"
-        ((SKIPPED_COUNT++)) || true
-        continue
-        ;;
-    esac
-  fi
   if [[ "$item" == */ ]]; then
     # 目录（去掉末尾斜杠）
     sync_dir "${item%/}"

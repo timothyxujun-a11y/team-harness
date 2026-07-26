@@ -1,5 +1,5 @@
 #!/bin/bash
-# install-git-hooks.sh - 一键安装 git pre-commit hook
+# install-git-hooks.sh - 一键安装 git hooks（pre-commit 编译检查 + pre-push 增量覆盖率）
 # 使用方法：在项目根目录执行 ./scripts/install-git-hooks.sh
 
 set -e
@@ -53,13 +53,28 @@ else
     exit 1
 fi
 
+# ====== 安装 pre-push hook（增量覆盖率校验，可选）======
+PUSH_SOURCE="git-hooks/pre-push"
+if [ -f "$PUSH_SOURCE" ]; then
+    PUSH_TARGET=".git/hooks/pre-push"
+    if [ -f "$PUSH_TARGET" ]; then
+        log_warning "已存在 pre-push hook，将覆盖"
+        rm -f "$PUSH_TARGET"
+    fi
+    cp "$PUSH_SOURCE" "$PUSH_TARGET"
+    chmod +x "$PUSH_TARGET"
+    log_success "pre-push hook 已安装到 $PUSH_TARGET（增量行覆盖率 > 80%）"
+else
+    log_info "未找到 $PUSH_SOURCE，跳过 pre-push"
+fi
+
 # ====== 完成 ======
 echo ""
 log_success "Git hooks 安装完成！"
 echo ""
 echo "📝 说明："
-echo "  - 提交代码时会自动执行编译检查"
-echo "  - 检查不通过会阻止提交"
-echo "  - 如需跳过检查（不推荐）：git commit --no-verify"
+echo "  - pre-commit：提交前编译检查（不通过阻止提交）"
+echo "  - pre-push：推送前增量行覆盖率 > 80%（需装 diff-cover：pip install diff-cover）"
+echo "  - 如需跳过（不推荐）：git commit --no-verify / git push --no-verify"
 echo ""
-echo "🔧 如需卸载：rm -f .git/hooks/pre-commit"
+echo "🔧 如需卸载：rm -f .git/hooks/pre-commit .git/hooks/pre-push"
