@@ -6,6 +6,7 @@
 #   ./scripts/sync.sh --check    # 仅检查有哪些更新，不实际修改
 #   ./scripts/sync.sh --force    # 强制覆盖所有文件（不推荐，会丢失 [CUSTOMIZE] 填写值）
 #   ./scripts/sync.sh --hooks    # 同步后自动运行 install-git-hooks.sh
+#   ./scripts/sync.sh --with-codegraph  # 同时同步 codegraph 配置（.mcp.json / setup-codegraph.sh，默认跳过）
 #   ./scripts/sync.sh --help     # 显示帮助
 #
 # 首次使用（目标项目还没有 sync.sh）：
@@ -59,12 +60,14 @@ log_diff()    { echo -e "${CYAN}[DIFF]${NC} $1"; }
 # ====== 参数解析 ======
 MODE="sync"       # sync | check | force
 INSTALL_HOOKS=false
+WITH_CODEGRAPH=false
 
 for arg in "$@"; do
   case "$arg" in
     --check)  MODE="check" ;;
     --force)  MODE="force" ;;
     --hooks)  INSTALL_HOOKS=true ;;
+    --with-codegraph) WITH_CODEGRAPH=true ;;
     --help|-h)
       sed -n '2,20p' "$0"
       exit 0
@@ -161,7 +164,7 @@ sync_file() {
   # 有差异
   if [ "$MODE" = "check" ]; then
     log_diff "  [更新] $1"
-    diff --color=auto "$dst" "$src" | head -30
+    diff --color=auto "$dst" "$src" | head -30 || true
     echo "  ..."
     ((UPDATED_COUNT++)) || true
     return
@@ -184,7 +187,7 @@ sync_file() {
     # 本地文件已填写 [CUSTOMIZE]，需要确认
     log_warning "  [冲突] $1 — 本地已修改（可能已填写 [CUSTOMIZE]）"
     echo -ne "    覆盖会丢失本地修改，是否覆盖？[y/N] "
-    read -r answer
+    read -r answer || answer=""
     if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
       cp -r "$src" "$dst"
       log_success "  [覆盖] $1"
@@ -218,6 +221,16 @@ log_info "========== 开始同步 =========="
 echo ""
 
 for item in "${SYNC_ITEMS[@]}"; do
+  # codegraph 为可选增强：默认跳过，需 --with-codegraph 显式启用
+  if [ "$WITH_CODEGRAPH" != "true" ]; then
+    case "$item" in
+      .mcp.json|scripts/setup-codegraph.sh)
+        log_info "  [跳过] ${item}（codegraph 可选，加 --with-codegraph 启用）"
+        ((SKIPPED_COUNT++)) || true
+        continue
+        ;;
+    esac
+  fi
   if [[ "$item" == */ ]]; then
     # 目录（去掉末尾斜杠）
     sync_dir "${item%/}"
