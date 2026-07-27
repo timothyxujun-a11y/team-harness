@@ -91,7 +91,10 @@ jobs:
             fi
           done
           if [ "$FOUND" = true ]; then
-            echo "::warning ::检测到可能的敏感信息"
+            echo "::error ::检测到可能的敏感信息（明文密码/密钥/Token），按需求 §13.6 安全门禁阻断合并"
+            exit 1
+          else
+            echo "未检测到明文敏感信息"
           fi
 
       - name: Harness Report

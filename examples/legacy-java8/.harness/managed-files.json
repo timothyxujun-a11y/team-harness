@@ -1,0 +1,47 @@
+{
+  "CLAUDE.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/legacy-java8/CLAUDE.md",
+    "generated": true,
+    "sha256": "79557bf491fbfe881327ea92377963e483851d2f9c9443779c6ced03cf614c00"
+  },
+  "docs/harness/java-common/index.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/legacy-java8/docs/harness/java-common/index.md",
+    "generated": true,
+    "sha256": "1ea5d15a054ace461a8103af2640e3a67ba4e97cb62a1c478a552819842cc317"
+  },
+  "docs/harness/spring-job/index.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/legacy-java8/docs/harness/spring-job/index.md",
+    "generated": true,
+    "sha256": "0eb0df5f69fd37c786b9b90fdb381f114142111ca12bbd2543725531dc069642"
+  },
+  "docs/harness/legacy-java8/index.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/legacy-java8/docs/harness/legacy-java8/index.md",
+    "generated": true,
+    "sha256": "589b7cc940a03ec987bd7d5f21ebe47e6323328be250aedc67c8d4c15a593954"
+  },
+  "docs/harness/core/index.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/legacy-java8/docs/harness/core/index.md",
+    "generated": true,
+    "sha256": "e6f18975528138b7f135ee7fa2a73841fd169fa7be831125fc56d1de1d34ae24"
+  },
+  ".claude/settings.json": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/legacy-java8/.claude/settings.json",
+    "generated": true,
+    "sha256": "63b5be2cdfeed3c2ce1e6625760043ec031d9c891d82b4f6dcaf0617957ae5e9"
+  },
+  ".github/workflows/harness-check.yml": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/legacy-java8/.github/workflows/harness-check.yml",
+    "generated": true,
+    "sha256": "7c04a37f0cb9f0e6b726318b1f3741e973f6016fb6cd288a156b5c36cfb923b3"
+  },
+  ".claude/agents/code-reviewer.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/legacy-java8/.claude/agents/code-reviewer.md",
+    "generated": true,
+    "sha256": "9368129c4dd0767af1eaffc07d20a172cc63a03322b0c8ac4294b2aad1cdd6ed"
+  },
+  ".claude/agents/test-writer.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/legacy-java8/.claude/agents/test-writer.md",
+    "generated": true,
+    "sha256": "35468c6ef905ce901bb9d8ed538ca7df4ce12f88a3ea1578c8a845ce9ccf3b02"
+  }
+}

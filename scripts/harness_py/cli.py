@@ -116,7 +116,7 @@ def _cmd_rules_select(args):
     """规则选择。"""
     try:
         from harness_py.rules import RuleSelector
-        from harness_py.config import load_config
+        from harness_py.config import load_config, get_context_budget
     except ImportError as e:
         print(f"错误: 规则模块不可用 — {e}", file=sys.stderr)
         return 1
@@ -129,7 +129,9 @@ def _cmd_rules_select(args):
 
     files = [f.strip() for f in args.files.split(",") if f.strip()]
     selector = RuleSelector(project_root, config)
-    result = selector.select(task=args.task, files=files)
+    # 根据任务类型应用上下文预算（§11.7/11.12：超预算按优先级截断）
+    budget = get_context_budget(config, args.task)
+    result = selector.select(task=args.task, files=files, budget_config=budget)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -209,15 +211,21 @@ def _cmd_upgrade(args):
         result = check_upgrade(project_root)
         if result.get("upgrade_available"):
             print(f"有新版本可用: {result.get('current_version')} -> {result.get('latest_version')}")
+            if result.get("breaking_change"):
+                print("  ⚠ 包含 Breaking Change（主版本号变更）")
+        elif result.get("error"):
+            print(f"已是最新版本: {result.get('current_version')}（{result['error']}）")
         else:
             print(f"已是最新版本: {result.get('current_version')}")
         return 0
     elif args.to:
-        success, message = do_upgrade(project_root, args.to)
-        print(message)
+        source = getattr(args, "source", None)
+        success, message = do_upgrade(project_root, args.to, source=source)
+        if not success and isinstance(message, str):
+            print(message, file=sys.stderr)
         return 0 if success else 1
     else:
-        print("用法: harness upgrade [--check | --to <version>]")
+        print("用法: harness upgrade [--check | --to <version> [--source <path>]]")
         return 1
 
 
@@ -236,14 +244,16 @@ def _cmd_rollback(args):
 
 
 def _cmd_install_hooks(args):
-    """安装 Git Hook。"""
+    """安装/卸载 Git Hook。"""
     try:
-        from harness_py.hooks import install_hooks
+        from harness_py.hooks import install_hooks, uninstall_hooks
     except ImportError as e:
         print(f"错误: Hook 模块不可用 — {e}", file=sys.stderr)
         return 1
 
     project_root = find_project_root()
+    if args.uninstall:
+        return uninstall_hooks(project_root)
     return install_hooks(project_root)
 
 
@@ -320,6 +330,7 @@ def build_parser():
     sub_upgrade = subparsers.add_parser("upgrade", help="升级 Harness")
     sub_upgrade.add_argument("--check", action="store_true", help="检查升级")
     sub_upgrade.add_argument("--to", metavar="VERSION", help="指定版本升级")
+    sub_upgrade.add_argument("--source", metavar="PATH", help="本地 harness 源路径（本地校验模式）")
     sub_upgrade.set_defaults(func=_cmd_upgrade)
 
     # --- rollback ---
@@ -328,6 +339,7 @@ def build_parser():
 
     # --- install-hooks ---
     sub_hooks = subparsers.add_parser("install-hooks", help="安装 Git Hook")
+    sub_hooks.add_argument("--uninstall", action="store_true", help="卸载已安装的 Hook")
     sub_hooks.set_defaults(func=_cmd_install_hooks)
 
     # --- migrate ---

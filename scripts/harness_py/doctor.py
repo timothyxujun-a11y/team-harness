@@ -20,7 +20,7 @@ from harness_py.utils import (
 )
 from harness_py.config import load_config, get_build_commands
 from harness_py.profile import resolve_profiles, get_enabled_profiles_text
-from harness_py.rules import RuleSelector
+from harness_py.rules import RuleSelector, check_consistency
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +94,7 @@ def _doc001(project_root):
     if os.path.isdir(git_dir):
         issues.append(_check("DOC-001", "passed", "Git 仓库检测通过"))
     else:
-        issues.append(_check("DOC-001", "failed", "未找到 .git 目录，当前目录可能不是 Git 仓库"))
+        issues.append(_check("DOC-001", "warning", "未找到 .git 目录（子目录或未 git init 时可忽略）"))
 
     pom = os.path.join(project_root, "pom.xml")
     if os.path.isfile(pom):
@@ -136,24 +136,28 @@ def _doc002(project_root):
 
 
 def _doc003(project_root):
-    """DOC-003: Maven。"""
+    """DOC-003: Maven（项目 mvnw 或系统 mvn，任一可用即可）。"""
     issues = []
 
-    rc, stdout, stderr = _run_cmd("mvn --version 2>&1", cwd=project_root)
-    if rc == 0:
-        issues.append(_check("DOC-003", "passed", f"Maven 可用: {stdout.split(chr(10))[0] if stdout else '未知版本'}"))
-    else:
-        issues.append(_check("DOC-003", "failed", "Maven 未安装或不在 PATH 中"))
-
-    # 检查 mvnw
     mvnw = os.path.join(project_root, "mvnw")
-    if os.path.isfile(mvnw):
+    has_mvnw = os.path.isfile(mvnw)
+
+    rc, stdout, stderr = _run_cmd("mvn --version 2>&1", cwd=project_root)
+    system_mvn_ok = (rc == 0)
+
+    if has_mvnw:
         if os.access(mvnw, os.X_OK):
             issues.append(_check("DOC-003", "passed", "Maven Wrapper (mvnw) 可用"))
         else:
-            issues.append(_check("DOC-003", "warning", "mvnw 存在但无可执行权限"))
+            issues.append(_check("DOC-003", "warning", "mvnw 存在但无可执行权限",
+                                suggestion="运行 chmod +x mvnw"))
+    elif system_mvn_ok:
+        first_line = stdout.split("\n")[0] if stdout else "未知版本"
+        issues.append(_check("DOC-003", "passed",
+                            f"系统 Maven 可用: {first_line}（建议启用 mvnw）"))
     else:
-        issues.append(_check("DOC-003", "passed", "使用系统 Maven（未启用 Wrapper）"))
+        issues.append(_check("DOC-003", "failed", "Maven 未安装且无 mvnw",
+                            suggestion="安装 Maven 或运行 mvn wrapper:wrapper 生成 mvnw"))
 
     return issues
 
@@ -285,53 +289,52 @@ def _doc006(project_root):
 
 
 def _doc007(project_root):
-    """DOC-007: 规则一致性。"""
+    """DOC-007: 规则一致性 — 重复 ID、规则文件缺失、废弃规则、Token 估算缺失。"""
     issues = []
+    config = load_config(project_root)
 
+    if config is not None:
+        # 业务项目：基于启用的 Profile 做全面一致性检查
+        try:
+            passed, cissues = check_consistency(project_root, config)
+        except Exception as e:
+            return [_check("DOC-007", "failed", f"规则一致性检查异常: {e}")]
+        if passed:
+            issues.append(_check("DOC-007", "passed", "规则文件体系一致"))
+        else:
+            for msg in cissues:
+                issues.append(_check("DOC-007", "warning", msg))
+        return issues
+
+    # 无配置（如 harness 主仓库自检）：遍历所有 Profile + Core 检查规则文件存在性
     profiles_dir = get_profiles_dir(project_root)
     core_dir = get_core_dir(project_root)
-    all_ok = True
+    targets = [("Core", core_dir)]
+    if os.path.isdir(profiles_dir):
+        for name in sorted(os.listdir(profiles_dir)):
+            pdir = os.path.join(profiles_dir, name)
+            if os.path.isdir(pdir):
+                targets.append((name, pdir))
 
-    for label, pdir in [("Core", core_dir), *((p, os.path.join(profiles_dir, p))
-                         for p in os.listdir(profiles_dir)
-                         if os.path.isdir(os.path.join(profiles_dir, p)))]:
-        if not os.path.isdir(pdir):
-            continue
-
-        profile_yaml = safe_read_yaml(os.path.join(pdir, "profile.yaml"))
-        if not profile_yaml:
-            issues.append(_check("DOC-007", "warning",
-                                f"{label}: profile.yaml 解析失败"))
-            all_ok = False
-            continue
-
+    checked = 0
+    for label, pdir in targets:
         rules_yaml = safe_read_yaml(os.path.join(pdir, "rules.yaml"))
-        if not rules_yaml:
-            issues.append(_check("DOC-007", "warning",
-                                f"{label}: rules.yaml 解析失败"))
-            all_ok = False
+        if not rules_yaml or "rules" not in rules_yaml:
             continue
-
         rule_dir = os.path.join(pdir, "rules")
-        if not os.path.isdir(rule_dir):
-            issues.append(_check("DOC-007", "warning",
-                                f"{label}: rules/ 目录缺失"))
-            all_ok = False
-            continue
+        for rule in rules_yaml["rules"]:
+            content_path = rule.get("content", {}).get("path", "")
+            if not content_path:
+                continue
+            checked += 1
+            abs_path = os.path.join(rule_dir, os.path.basename(content_path))
+            if not os.path.isfile(abs_path):
+                issues.append(_check("DOC-007", "warning",
+                    f"{label}: 规则文件缺失: {rule.get('id', '?')} → {content_path}"))
 
-        # 检查 rules.yaml 中声明的文件是否存在
-        declared_rules = rules_yaml.get("rules", [])
-        for rule in declared_rules:
-            rule_path = rule.get("path", "")
-            if rule_path:
-                abs_path = os.path.join(rule_dir, os.path.basename(rule_path))
-                if not os.path.isfile(abs_path):
-                    issues.append(_check("DOC-007", "warning",
-                                        f"{label}: 规则文件缺失: {rule_path}"))
-
-    if all_ok:
-        issues.append(_check("DOC-007", "passed", "规则文件体系一致"))
-
+    if not issues:
+        issues.append(_check("DOC-007", "passed",
+            f"规则文件体系一致（检查 {checked} 条规则文件）"))
     return issues
 
 
@@ -377,17 +380,20 @@ def _doc009(project_root):
 
 
 def _doc010(project_root):
-    """DOC-010: Git Hook。"""
+    """DOC-010: Git Hook（是否安装、是否当前版本、是否可执行）。"""
+    from harness_py.hooks import is_hook_installed, SUPPORTED_HOOKS
     issues = []
 
-    hook_dir = os.path.join(project_root, ".git", "hooks")
-    pre_commit = os.path.join(hook_dir, "pre-commit")
+    if not os.path.isdir(os.path.join(project_root, ".git")):
+        return [_check("DOC-010", "warning", "非 Git 仓库，跳过 Hook 检查")]
 
-    if os.path.isfile(pre_commit):
-        issues.append(_check("DOC-010", "passed", "Pre-commit Hook 已安装"))
-    else:
-        issues.append(_check("DOC-010", "warning", "Pre-commit Hook 未安装",
-                            suggestion="运行 ./scripts/install-git-hooks.sh 安装"))
+    for name in SUPPORTED_HOOKS:
+        if is_hook_installed(project_root, name):
+            issues.append(_check("DOC-010", "passed", f"{name} Hook 已安装且为当前版本"))
+        else:
+            issues.append(_check("DOC-010", "warning",
+                                f"{name} Hook 未安装或版本过期",
+                                suggestion="运行 ./scripts/harness install-hooks 安装"))
 
     return issues
 
@@ -475,25 +481,19 @@ def _auto_fix(project_root, checks):
             except Exception as e:
                 fixed.append(f"受管文件生成失败: {e}")
 
-        # DOC-001: 创建配置目录
+        # DOC-001: 创建缺失的配置文件（合法 YAML）
         if cid == "DOC-001" and "Harness 配置文件" in check_item["message"]:
-            harness_dir = _harness_dir(project_root)
-            os.makedirs(harness_dir, exist_ok=True)
+            from harness_py.config import create_default_config, save_config
             config_path = _config_path(project_root)
             if not os.path.isfile(config_path):
-                default_config = {
-                    "apiVersion": "harness.company.io/v1",
-                    "kind": "HarnessConfig",
-                    "project": {"name": "my-project", "description": ""},
-                    "runtime": {"javaVersion": "11"},
-                    "profiles": ["java-common"],
-                }
-                with open(config_path, "w", encoding="utf-8") as f:
-                    json.dump(default_config, f, indent=2, ensure_ascii=False)
-                # 改为 YAML 风格输出
-                content = safe_read_file(config_path)
-                fixed.append("创建了默认配置文件 .harness/config.yaml")
-                # 注意：这里应改写为 YAML，简化为 JSON 存储也是可接受的
+                default_config = create_default_config(
+                    project_root, os.path.basename(project_root), "17", ["java-common"]
+                )
+                try:
+                    save_config(default_config, project_root)
+                    fixed.append("创建了默认配置文件 .harness/config.yaml")
+                except Exception as e:
+                    fixed.append(f"创建配置文件失败: {e}")
 
         # DOC-010: 安装 Git Hook
         if cid == "DOC-010" and "Hook 未安装" in check_item["message"]:
@@ -567,14 +567,8 @@ def run_doctor(project_root=None, verbose=False, json_output=False,
     """
     root = project_root or find_project_root()
 
-    # 校验项目根目录
-    if not os.path.isdir(os.path.join(root, ".git")):
-        msg = f"不是有效的 Git 仓库: {root}"
-        if json_output:
-            print(json.dumps({"error": msg}, ensure_ascii=False))
-        else:
-            print(f"[错误] {msg}")
-        return EXIT_ARG_ERROR, {"status": "error", "message": msg}
+    # 不强制要求 .git：业务项目接入标志为 .harness/config.yaml，
+    # .git 的检测交由 DOC-001 以 warning 形式给出，避免 examples 等子目录误报。
 
     all_checks = []
     total = {"passed": 0, "warnings": 0, "failed": 0}

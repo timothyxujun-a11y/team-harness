@@ -51,5 +51,6 @@ if ! "$VENV_DIR/bin/pip" show pyyaml >/dev/null 2>&1; then
 fi
 
 # Run harness — add scripts/ to Python path
-export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+# 注意: ${PYTHONPATH:+:$PYTHONPATH} 避免在 set -u 且 PYTHONPATH 未定义时崩溃
+export PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 exec "$VENV_DIR/bin/python" -m harness_py "$@"

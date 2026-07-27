@@ -1,0 +1,2185 @@
+# Team Harness 第一阶段优化需求文档
+
+## 1. 文档信息
+
+| 项目   | 内容                                                |
+| ---- | ------------------------------------------------- |
+| 文档名称 | Team Harness 第一阶段优化需求文档                           |
+| 项目名称 | Team Harness                                      |
+| 建设阶段 | 第一阶段                                              |
+| 文档类型 | 产品需求文档                                            |
+| 目标用户 | Java 开发人员、架构师、技术负责人、AI 工程平台团队                     |
+| 核心目标 | 将现有模板同步方案升级为可分层、可生成、可按需加载、可版本化、可验证的仓库级 AI Harness |
+
+---
+
+# 2. 项目背景
+
+当前 Team Harness 已经具备以下基础能力：
+
+* 通过 `CLAUDE.md` 向 Claude Code 提供项目规则。
+* 通过 `docs/conventions.md` 提供详细开发规范。
+* 通过 `.claude/agents` 提供代码审查、测试等子 Agent。
+* 通过 `.claude/commands` 封装测试、评审、提交等工作流。
+* 通过 `.claude/settings.json` 控制 Claude Code 权限。
+* 通过 Git Hook 执行本地编译、测试和覆盖率检查。
+* 通过同步脚本将 Harness 文件分发到多个 Java 项目。
+
+现有方案适合少量、技术栈相似的 Java 项目，但在推广至几十个、上百个微服务时，逐渐暴露以下问题：
+
+1. 团队公共规则和具体项目规则混合。
+2. HTTP、MQ、定时任务等不同类型服务共用一套规范。
+3. 项目定制内容和公共模板写在同一文件中，升级时容易被覆盖。
+4. 项目默认同步 Harness 最新代码，缺少版本锁定。
+5. Git Hook 可以被跳过，不能作为正式质量门禁。
+6. Agent、规范文档和 CI 可能维护不同的规则。
+7. 缺少统一的项目接入检查工具。
+8. 完整规则可能被一次性加载，导致 Claude Code 上下文窗口占用过高。
+9. 项目启用了多个 Profile 后，规则会持续叠加。
+10. Agent 可能在任务开始时加载与当前改动无关的全部规范。
+
+因此，第一阶段不仅要解决规则治理和分发问题，还必须将“按需加载”作为基础架构能力。
+
+---
+
+# 3. 项目目标
+
+第一阶段建设完成后，应实现以下目标：
+
+1. 团队公共规则、技术类型规则和项目本地规则分层管理。
+2. 不同类型的 Java 微服务可以选择不同 Profile。
+3. Harness 生成文件与项目本地文件完全分离。
+4. Harness 升级时不覆盖项目本地定制内容。
+5. 每个业务仓库锁定明确的 Harness 版本。
+6. 本地 Git Hook 提供快速反馈，CI 提供不可绕过的正式门禁。
+7. Agent、规范文档和 CI 使用同一个规则源。
+8. Claude Code 默认只加载最小常驻上下文。
+9. 根据任务、文件路径、代码类型和 Git Diff 动态选择规则。
+10. 对单次加载的文件数量和 Token 数量进行限制。
+11. 通过统一 Doctor 命令检查项目是否正确接入 Harness。
+12. 为后续服务目录、PRD 路由和跨仓编排提供标准化基础。
+
+---
+
+# 4. 核心设计原则
+
+## 4.1 最小常驻上下文
+
+`CLAUDE.md` 只包含：
+
+* 项目基础信息。
+* 少量强制规则。
+* 构建和测试命令。
+* 规则索引入口。
+* 按需加载说明。
+
+不得将全部 Core、Profile 和项目规则直接合并到 `CLAUDE.md`。
+
+## 4.2 规则按需加载
+
+规则根据以下信息动态选择：
+
+* 当前任务类型。
+* 当前修改文件。
+* 文件所属目录。
+* Java 类注解。
+* 代码符号。
+* Git Diff。
+* 当前启用的 Profile。
+* 项目本地规则索引。
+
+## 4.3 公共内容和本地内容隔离
+
+Harness 管理的文件可以重新生成。
+
+项目自行维护的文件不得被 Harness 覆盖。
+
+## 4.4 单一规则源
+
+规则只在 `rules.yaml` 中定义一次。
+
+Agent、规范文档和 CI 均从该规则源生成或读取。
+
+## 4.5 本地反馈和正式门禁分离
+
+Git Hook 可以被开发者临时绕过。
+
+CI 质量检查不得被普通开发者绕过。
+
+## 4.6 版本可控
+
+业务项目只能使用明确的版本或正式 Tag。
+
+不得默认持续跟踪 Harness `main` 分支。
+
+---
+
+# 5. 第一阶段建设范围
+
+第一阶段包含以下七个需求模块：
+
+| 编号     | 需求模块                            | 优先级 |
+| ------ | ------------------------------- | --- |
+| HR-001 | Core、Profile、Project Overlay 分层 | P0  |
+| HR-002 | 项目定制分离与生成机制                     | P0  |
+| HR-003 | 规则按需加载与上下文预算                    | P0  |
+| HR-004 | Harness 版本锁定与升级机制               | P0  |
+| HR-005 | CI 强制质量门禁                       | P0  |
+| HR-006 | Agent、规范和 CI 规则一致性              | P0  |
+| HR-007 | Harness Doctor 自检能力             | P1  |
+
+---
+
+# 6. 非本阶段范围
+
+第一阶段暂不包含：
+
+* PRD 自动识别应修改的微服务。
+* 企业服务知识图谱。
+* API 全局依赖图谱。
+* MQ Topic 全局依赖图谱。
+* 数据库表归属图谱。
+* 自动创建多个仓库的修改任务。
+* 自动创建跨仓 Pull Request。
+* 中心化 Harness 管理控制台。
+* 企业级代码语义检索平台。
+
+---
+
+# 7. 总体架构
+
+## 7.1 Harness 主仓库目录
+
+```text
+team-harness/
+├── VERSION
+├── CHANGELOG.md
+│
+├── core/
+│   ├── profile.yaml
+│   ├── rules.yaml
+│   ├── index.md
+│   └── rules/
+│       ├── ai-behavior.md
+│       ├── security.md
+│       ├── git-workflow.md
+│       └── quality-gates.md
+│
+├── profiles/
+│   ├── java-common/
+│   │   ├── profile.yaml
+│   │   ├── rules.yaml
+│   │   ├── index.md
+│   │   └── rules/
+│   │       ├── naming.md
+│   │       ├── exception.md
+│   │       ├── logging.md
+│   │       └── testing.md
+│   │
+│   ├── spring-http/
+│   │   ├── profile.yaml
+│   │   ├── rules.yaml
+│   │   ├── index.md
+│   │   └── rules/
+│   │       ├── controller.md
+│   │       ├── validation.md
+│   │       ├── response.md
+│   │       ├── compatibility.md
+│   │       └── openapi.md
+│   │
+│   ├── spring-mq/
+│   │   ├── profile.yaml
+│   │   ├── rules.yaml
+│   │   ├── index.md
+│   │   └── rules/
+│   │       ├── consumer.md
+│   │       ├── producer.md
+│   │       ├── idempotency.md
+│   │       ├── retry.md
+│   │       └── schema.md
+│   │
+│   ├── spring-job/
+│   └── legacy-java8/
+│
+├── templates/
+│   ├── CLAUDE.md.tpl
+│   ├── profile-index.md.tpl
+│   ├── settings.json.tpl
+│   └── workflows/
+│
+├── schemas/
+│   ├── harness-config.schema.json
+│   ├── harness-lock.schema.json
+│   ├── harness-profile.schema.json
+│   └── harness-rules.schema.json
+│
+├── scripts/
+│   ├── harness
+│   ├── render.sh
+│   ├── doctor.sh
+│   ├── upgrade.sh
+│   └── migrate.sh
+│
+└── tests/
+```
+
+## 7.2 业务项目接入后目录
+
+```text
+business-service/
+├── CLAUDE.md
+├── CLAUDE.local.md
+│
+├── .harness/
+│   ├── config.yaml
+│   ├── lock.yaml
+│   ├── managed-files.json
+│   ├── rule-index.json
+│   └── local/
+│       ├── index.yaml
+│       ├── business.md
+│       ├── architecture.md
+│       ├── database.md
+│       └── mq.md
+│
+├── docs/
+│   ├── conventions.local.md
+│   └── harness/
+│       ├── index.md
+│       ├── core/
+│       ├── java/
+│       ├── http/
+│       └── mq/
+│
+├── .claude/
+│   ├── settings.json
+│   ├── agents/
+│   ├── commands/
+│   └── skills/
+│
+└── .github/
+    └── workflows/
+        └── harness-check.yml
+```
+
+---
+
+# 8. 文件管理原则
+
+| 文件                          | Harness 管理 | 项目可修改 |            默认加载 |
+| --------------------------- | ---------: | ----: | --------------: |
+| `CLAUDE.md`                 |          是 |     否 |               是 |
+| `CLAUDE.local.md`           |          否 |     是 |          是，但必须小 |
+| `.harness/config.yaml`      |          否 |     是 |               否 |
+| `.harness/lock.yaml`        |          是 |     否 |               否 |
+| `.harness/rule-index.json`  |          是 |     否 |              按需 |
+| `.harness/local/*.md`       |          否 |     是 |              按需 |
+| `docs/harness/index.md`     |          是 |     否 |              按需 |
+| `docs/harness/*/rules/*.md` |          是 |     否 |              按需 |
+| `docs/conventions.local.md` |          否 |     是 |              按需 |
+| `.claude/agents/*.md`       |          是 |     否 |      执行 Agent 时 |
+| `.claude/settings.json`     |          是 |  原则上否 | Claude Code 启动时 |
+
+---
+
+# 9. HR-001：Core、Profile、Project Overlay 分层
+
+## 9.1 需求目标
+
+将现有规则拆分为：
+
+1. Core：适用于全部项目的强制基础规则。
+2. Profile：适用于特定技术栈或服务类型的规则。
+3. Project Overlay：仅适用于某一个业务项目的本地规则。
+
+避免不同服务类型之间互相加载错误规范。
+
+## 9.2 Core 范围
+
+Core 只能包含通用规则：
+
+* 不得编造不存在的接口、方法和配置。
+* 修改代码前必须理解需求。
+* 只修改完成当前任务所需的范围。
+* 不得写入生产密钥和敏感信息。
+* 不得执行高风险 Git 操作。
+* 修改后应执行必要的编译和测试。
+* 代码变更应具备可追踪性。
+* AI 生成内容必须接受人工评审。
+
+Core 不得包含：
+
+* 固定公司包名。
+* 固定业务域。
+* 固定 MQ 中间件。
+* 固定 Controller 结构。
+* 固定 ORM 框架。
+* 固定测试版本。
+* 具体系统名称。
+
+## 9.3 第一阶段 Profile
+
+### java-common
+
+适用于全部 Java 项目：
+
+* Java 通用编码规范。
+* Maven 构建规范。
+* 异常处理。
+* 日志规范。
+* 单元测试基础规范。
+* 常见对象命名。
+
+### spring-http
+
+适用于 HTTP API 服务：
+
+* Controller 分层。
+* 参数校验。
+* DTO 和 VO。
+* 错误码。
+* OpenAPI。
+* API 兼容性。
+
+### spring-mq
+
+适用于消息驱动服务：
+
+* Consumer 入口。
+* Producer 封装。
+* 消息幂等。
+* 重试机制。
+* 死信处理。
+* 消息 Schema 兼容性。
+
+### spring-job
+
+适用于定时任务和批处理：
+
+* Job 入口。
+* 分布式锁。
+* 重复执行。
+* 批处理。
+* 失败重试。
+* 断点续跑。
+
+### legacy-java8
+
+适用于 Java 8 存量项目：
+
+* Java 8 语法限制。
+* JUnit 4。
+* 旧版 Maven 插件兼容。
+* 不使用高版本 Java API。
+
+## 9.4 Profile 定义
+
+```yaml
+apiVersion: harness.company.io/v1
+kind: HarnessProfile
+
+metadata:
+  name: spring-http
+  version: 1.0.0
+  description: Spring Boot HTTP API 服务规则
+
+compatibility:
+  languages:
+    - java
+  javaVersions:
+    - "8"
+    - "11"
+    - "17"
+    - "21"
+  buildTools:
+    - maven
+
+dependsOn:
+  - java-common
+
+conflictsWith: []
+
+content:
+  index: index.md
+  rules: rules.yaml
+  ruleDirectory: rules
+```
+
+## 9.5 项目选择 Profile
+
+```yaml
+apiVersion: harness.company.io/v1
+kind: HarnessConfig
+
+project:
+  name: tax-service
+  description: 税金计算、税金明细和税金 PDF 服务
+
+runtime:
+  language: java
+  javaVersion: "8"
+  buildTool: maven
+
+profiles:
+  - java-common
+  - spring-http
+  - legacy-java8
+```
+
+## 9.6 合并顺序
+
+```text
+Core
+→ Profile 依赖
+→ 项目显式选择 Profile
+→ Project Overlay
+```
+
+## 9.7 冲突规则
+
+1. Project Overlay 可以补充规则，但不能覆盖 Core 强制规则。
+2. Profile 可以扩展 Core，但不能降低强制规则等级。
+3. Profile 间存在明确冲突时，生成失败。
+4. Profile 缺少依赖时，生成失败。
+5. 冲突信息必须包含规则 ID、来源 Profile 和建议处理方式。
+
+## 9.8 验收标准
+
+* HTTP 项目不会默认加载 MQ 规则。
+* MQ 项目不会默认加载 Controller 规则。
+* Java 8 项目不会生成 Java 17 特性要求。
+* 混合服务可以同时启用 HTTP 和 MQ Profile。
+* Profile 冲突时生成失败。
+* Core 不包含具体业务系统内容。
+
+---
+
+# 10. HR-002：项目定制分离与生成机制
+
+## 10.1 需求目标
+
+取消依赖 `[CUSTOMIZE]` 修改公共文件的方式。
+
+Harness 文件和项目本地规则必须完全分离。
+
+## 10.2 项目配置文件
+
+`.harness/config.yaml`：
+
+```yaml
+apiVersion: harness.company.io/v1
+kind: HarnessConfig
+
+project:
+  name: tax-service
+  description: 税金计算、税金明细和税金 PDF 服务
+  owners:
+    team: finance-platform
+
+runtime:
+  language: java
+  javaVersion: "8"
+  buildTool: maven
+  defaultBranch: main
+
+profiles:
+  - java-common
+  - spring-http
+  - legacy-java8
+
+build:
+  compileCommand: ./mvnw clean compile -DskipTests
+  testCommand: ./mvnw test
+  packageCommand: ./mvnw clean package -DskipTests
+
+quality:
+  diffCoverage:
+    enabled: true
+    threshold: 80
+    baseBranch: origin/main
+
+context:
+  alwaysLoaded:
+    maxFiles: 3
+    maxTokens: 2000
+  taskRules:
+    maxFiles: 8
+    maxTokens: 6000
+  codeReview:
+    maxRules: 15
+    maxTokens: 8000
+
+localRules:
+  main: CLAUDE.local.md
+  index: .harness/local/index.yaml
+```
+
+## 10.3 本地规则文件
+
+首次初始化时创建：
+
+```text
+CLAUDE.local.md
+.harness/local/index.yaml
+.harness/local/business.md
+.harness/local/architecture.md
+.harness/local/database.md
+.harness/local/mq.md
+docs/conventions.local.md
+```
+
+已存在时不得覆盖。
+
+## 10.4 `CLAUDE.md` 生成要求
+
+`CLAUDE.md` 仅保留最小常驻信息：
+
+```markdown
+<!-- AUTO-GENERATED BY TEAM HARNESS -->
+<!-- DO NOT EDIT DIRECTLY -->
+
+# 项目信息
+
+项目名称：tax-service  
+项目类型：HTTP  
+Java：8  
+构建工具：Maven  
+
+# 核心规则
+
+1. 不得编造不存在的接口、类或配置。
+2. 仅修改完成当前任务所需的最小范围。
+3. 不得修改生产配置或敏感信息。
+4. 修改后执行相关编译和测试。
+5. 高风险操作必须人工确认。
+
+# 常用命令
+
+编译：./mvnw compile  
+测试：./mvnw test  
+
+# 规则索引
+
+- Core：docs/harness/core/index.md
+- Java：docs/harness/java/index.md
+- HTTP：docs/harness/http/index.md
+- 项目本地规则：.harness/local/index.yaml
+
+# 按需加载要求
+
+执行任务前，根据任务类型和变更文件选择相关规则。
+禁止默认读取完整规则库。
+```
+
+## 10.5 大小限制
+
+`CLAUDE.md` 默认要求：
+
+* 不超过 200 行。
+* 不超过 8 KB。
+* 预计不超过 2,000 Token。
+* 不包含完整 Profile 规则。
+* 不包含大量代码示例。
+* 不复制 Agent 的规则内容。
+
+## 10.6 生成命令
+
+```bash
+./scripts/harness render
+./scripts/harness render --check
+./scripts/harness render --diff
+```
+
+### `render`
+
+* 在临时目录生成文件。
+* 校验配置。
+* 校验 Profile。
+* 生成索引。
+* 生成受管文件。
+* 更新受管文件清单。
+* 更新生成摘要。
+
+### `render --check`
+
+* 不修改文件。
+* 检查生成文件是否漂移。
+* 发现漂移返回非零退出码。
+
+### `render --diff`
+
+* 不修改文件。
+* 输出实际文件和预期生成结果的差异。
+
+## 10.7 受管文件清单
+
+`.harness/managed-files.json`：
+
+```json
+{
+  "harnessVersion": "2.0.0",
+  "files": [
+    {
+      "path": "CLAUDE.md",
+      "sha256": "xxx",
+      "type": "generated"
+    },
+    {
+      "path": "docs/harness/http/index.md",
+      "sha256": "xxx",
+      "type": "generated"
+    },
+    {
+      "path": ".claude/agents/code-reviewer.md",
+      "sha256": "xxx",
+      "type": "managed"
+    }
+  ]
+}
+```
+
+## 10.8 删除和迁移规则
+
+当新版本删除旧受管文件时：
+
+1. 检查该文件是否被项目修改。
+2. 未修改时自动删除。
+3. 已修改时不得自动删除。
+4. 标记为脱离 Harness 管理。
+5. 输出人工处理提示。
+
+## 10.9 原子更新
+
+所有生成操作必须：
+
+1. 先在临时目录完成。
+2. 全部校验通过后再替换业务仓库文件。
+3. 失败时不修改业务仓库。
+4. 自动清理临时目录。
+5. 不得在项目根目录保留 `.harness-upstream` 等临时仓库。
+
+## 10.10 验收标准
+
+* Harness 升级不覆盖本地规则。
+* 手工修改 `CLAUDE.md` 后可以检测漂移。
+* 配置变更未执行生成时 CI 能发现。
+* 上游删除文件时可以安全处理。
+* 生成失败不会留下半更新状态。
+* 项目不再依赖 `[CUSTOMIZE]`。
+
+---
+
+# 11. HR-003：规则按需加载与上下文预算
+
+## 11.1 需求目标
+
+根据当前任务和代码变更，只加载必要规则，避免完整规范进入 Claude Code 上下文。
+
+## 11.2 加载层级
+
+### 第一层：常驻上下文
+
+默认加载：
+
+* `CLAUDE.md`
+* 精简后的 `CLAUDE.local.md`
+* Claude Code 必要系统设置
+
+目标控制在约 2,000 Token 内。
+
+### 第二层：规则索引
+
+任务需要时读取：
+
+* Core Index
+* Profile Index
+* Local Index
+
+索引只说明：
+
+* 规则主题。
+* 适用场景。
+* 文件路径。
+* 触发条件。
+
+索引不包含完整规则正文。
+
+### 第三层：详细规则
+
+根据规则选择结果按需读取。
+
+例如修改 Controller 时，只读取：
+
+* HTTP Controller 规则。
+* 参数校验规则。
+* 相关测试规则。
+* 项目本地 HTTP 规则。
+
+不读取：
+
+* MQ 幂等规则。
+* Job 分布式锁规则。
+* 数据库迁移规则。
+* Git 提交规则。
+
+## 11.3 规则选择命令
+
+```bash
+./scripts/harness rules select \
+  --task code-review \
+  --files src/main/java/com/company/tax/controller/TaxController.java
+```
+
+输出：
+
+```json
+{
+  "task": "code-review",
+  "matchedProfiles": [
+    "java-common",
+    "spring-http"
+  ],
+  "selectedRules": [
+    {
+      "id": "HTTP-ARCH-001",
+      "path": "docs/harness/http/controller.md",
+      "reason": "Controller file changed",
+      "estimatedTokens": 450
+    },
+    {
+      "id": "HTTP-VALIDATION-001",
+      "path": "docs/harness/http/validation.md",
+      "reason": "HTTP request handling changed",
+      "estimatedTokens": 380
+    },
+    {
+      "id": "JAVA-TEST-001",
+      "path": "docs/harness/java/testing.md",
+      "reason": "Production Java file changed",
+      "estimatedTokens": 520
+    }
+  ],
+  "estimatedTotalTokens": 1350
+}
+```
+
+## 11.4 规则选择条件
+
+`rules.yaml`：
+
+```yaml
+rules:
+  - id: HTTP-ARCH-001
+    title: Controller 不承载核心业务逻辑
+    severity: error
+    enforced: false
+
+    selectors:
+      profiles:
+        - spring-http
+
+      paths:
+        include:
+          - "**/controller/**/*.java"
+
+      annotations:
+        - RestController
+        - Controller
+
+      tasks:
+        - feature-development
+        - refactor
+        - code-review
+
+      triggers:
+        - controller_changed
+        - endpoint_added
+
+    content:
+      path: rules/controller.md
+
+    context:
+      priority: high
+      estimatedTokens: 450
+```
+
+## 11.5 任务类型
+
+第一阶段至少支持：
+
+```text
+requirement-analysis
+feature-development
+bug-fix
+refactor
+test-generation
+code-review
+commit
+database-change
+dependency-change
+configuration-change
+```
+
+## 11.6 选择维度
+
+规则选择器至少支持：
+
+* Profile。
+* 文件路径。
+* 文件类型。
+* 类注解。
+* 类名和包名。
+* 改动任务。
+* Git Diff。
+* 新增文件或修改文件。
+* 依赖变更。
+* 配置变更。
+* 项目本地匹配条件。
+
+## 11.7 上下文预算
+
+默认配置：
+
+```yaml
+context:
+  alwaysLoaded:
+    maxFiles: 3
+    maxTokens: 2000
+
+  taskRules:
+    maxFiles: 8
+    maxRules: 12
+    maxTokens: 6000
+
+  codeReview:
+    maxFiles: 12
+    maxRules: 15
+    maxRulesPerChangedFile: 5
+    maxTokens: 8000
+
+  fallback:
+    allowFullIndex: true
+    allowFullRuleSet: false
+```
+
+## 11.8 超出预算处理
+
+规则超过预算时，系统按照以下顺序处理：
+
+1. 优先保留 `error` 规则。
+2. 优先保留 Core 强制规则。
+3. 优先保留与改动文件直接匹配的规则。
+4. 优先保留高优先级规则。
+5. 合并重复指向同一规则文档的规则。
+6. 延迟加载低优先级规则。
+7. 返回被截断规则列表。
+8. 禁止自动加载完整规则集作为兜底。
+
+## 11.9 规则文件粒度
+
+单个规则主题文件建议：
+
+* 300 至 1,000 Token。
+* 包含 3 至 10 条高度相关规则。
+* 不建议一个 Profile 只有一个超大规范文件。
+* 不建议每条规则单独一个文件。
+
+推荐：
+
+```text
+http/controller.md
+http/validation.md
+http/compatibility.md
+http/openapi.md
+
+mq/consumer.md
+mq/idempotency.md
+mq/retry.md
+mq/schema.md
+
+java/testing.md
+java/logging.md
+java/exceptions.md
+```
+
+## 11.10 项目本地规则索引
+
+`.harness/local/index.yaml`：
+
+```yaml
+sections:
+  - id: local-business
+    path: business.md
+    loadWhen:
+      tasks:
+        - requirement-analysis
+        - feature-development
+
+  - id: local-database
+    path: database.md
+    loadWhen:
+      paths:
+        - "**/mapper/**"
+        - "**/repository/**"
+        - "**/*.xml"
+
+  - id: local-mq
+    path: mq.md
+    loadWhen:
+      paths:
+        - "**/consumer/**"
+        - "**/producer/**"
+
+  - id: local-protected
+    path: protected-files.md
+    alwaysLoad: true
+```
+
+## 11.11 不同任务的加载规则
+
+### 需求分析
+
+加载：
+
+* 项目业务说明。
+* 系统职责。
+* 项目架构。
+* 业务本地规则。
+
+不加载：
+
+* Java 命名规范。
+* 单元测试细节。
+* Git 提交格式。
+
+### 开发任务
+
+根据修改目录选择：
+
+```text
+Controller → HTTP 规则
+Consumer → MQ 规则
+Job → Job 规则
+Mapper → 数据访问规则
+配置文件 → 配置和安全规则
+```
+
+### 测试任务
+
+加载：
+
+* 当前测试框架规则。
+* 当前类对应测试要求。
+* 覆盖率要求。
+
+### Code Review
+
+流程：
+
+1. 读取 Git Diff。
+2. 对变更文件分类。
+3. 执行规则选择器。
+4. 仅读取选中的规则。
+5. 输出带规则 ID 的报告。
+
+### Commit
+
+只加载：
+
+* 提交格式。
+* 禁止提交文件。
+* 变更总结规则。
+
+## 11.12 验收标准
+
+* HTTP 文件变更不会加载 MQ 规则。
+* 修改一个 Service 时，不会加载全部 Profile。
+* Code Reviewer 不内嵌完整规则集。
+* 规则选择结果包含选择原因。
+* 规则超过预算时按优先级截断。
+* 默认禁止整库规则加载。
+* Doctor 能检测大文件和上下文超限。
+* 常驻上下文控制在配置范围内。
+
+---
+
+# 12. HR-004：Harness 版本锁定与升级机制
+
+## 12.1 需求目标
+
+每个业务项目必须明确锁定 Harness 版本，不得默认追踪 `main`。
+
+## 12.2 版本规范
+
+采用语义化版本：
+
+```text
+主版本.次版本.修订版本
+
+2.0.0
+2.1.0
+2.1.1
+```
+
+* 主版本：不兼容变更。
+* 次版本：向后兼容的新能力。
+* 修订版本：向后兼容的问题修复。
+
+## 12.3 锁文件
+
+`.harness/lock.yaml`：
+
+```yaml
+apiVersion: harness.company.io/v1
+kind: HarnessLock
+
+harness:
+  version: 2.0.0
+  repository: timothyxujun-a11y/team-harness
+  ref: v2.0.0
+  commit: abc123456
+
+profiles:
+  java-common:
+    version: 1.0.0
+    checksum: xxx
+  spring-http:
+    version: 1.0.0
+    checksum: xxx
+  legacy-java8:
+    version: 1.0.0
+    checksum: xxx
+
+generated:
+  at: 2026-07-27T12:00:00Z
+  checksum: xxx
+```
+
+## 12.4 CLI
+
+```bash
+./scripts/harness version
+./scripts/harness upgrade --check
+./scripts/harness upgrade --to 2.1.0
+./scripts/harness rollback
+```
+
+## 12.5 `upgrade --check`
+
+输出：
+
+* 当前版本。
+* 最新可用版本。
+* 变更摘要。
+* 是否存在 Breaking Change。
+* 配置迁移要求。
+* 受影响生成文件。
+* 上下文预算变化。
+* Profile 兼容性变化。
+
+不得修改任何文件。
+
+## 12.6 升级流程
+
+1. 下载指定版本。
+2. 校验 Tag、Commit 和摘要。
+3. 读取 Changelog。
+4. 校验配置兼容性。
+5. 校验 Profile。
+6. 在临时目录生成新文件。
+7. 执行规则选择和上下文预算检查。
+8. 展示差异。
+9. 原子更新文件。
+10. 更新锁文件。
+11. 执行 Doctor。
+12. 保存上一个成功版本信息。
+
+## 12.7 发布渠道
+
+```text
+canary
+stable
+```
+
+业务配置：
+
+```yaml
+update:
+  channel: stable
+  allowMajorUpgrade: false
+  allowMinorUpgrade: true
+  allowPatchUpgrade: true
+```
+
+## 12.8 升级中断条件
+
+* 配置不满足新 Schema。
+* Profile 被删除。
+* Profile 新增冲突。
+* Java 版本不受支持。
+* 生成文件存在无法安全处理的本地修改。
+* 下载内容校验失败。
+* 新版本导致常驻上下文超过预算。
+* 规则索引生成失败。
+
+## 12.9 Changelog 要求
+
+每个版本必须包含：
+
+```markdown
+## 2.1.0
+
+### Added
+- 新增 spring-job Profile。
+
+### Changed
+- Code Reviewer 改为动态规则选择。
+
+### Fixed
+- 修复受管文件权限问题。
+
+### Migration
+- context.taskRules 新增 maxRules。
+
+### Breaking Changes
+- 无。
+```
+
+## 12.10 验收标准
+
+* 项目初始化后生成锁文件。
+* 重复生成不会自动升级 Harness。
+* 可以检查指定版本升级影响。
+* 可以升级至指定版本。
+* 升级失败时项目保持原状态。
+* 可以回滚。
+* 不允许使用不存在或校验失败的版本。
+* 不允许生产项目直接使用 `main`。
+
+---
+
+# 13. HR-005：CI 强制质量门禁
+
+## 13.1 需求目标
+
+将 Git Hook 调整为本地快速反馈，将 CI 设置为正式质量门禁。
+
+## 13.2 本地 Git Hook
+
+负责：
+
+* 快速编译。
+* 运行轻量测试。
+* 检查生成文件漂移。
+* 提醒上下文配置异常。
+
+允许开发者临时跳过。
+
+## 13.3 CI 职责
+
+CI 必须强制执行：
+
+* Harness 配置校验。
+* 生成文件漂移检查。
+* 规则一致性检查。
+* 上下文预算检查。
+* Maven 编译。
+* 自动化测试。
+* 增量覆盖率。
+* 敏感信息扫描。
+* 未完成配置检查。
+
+## 13.4 默认工作流
+
+```text
+.github/workflows/harness-check.yml
+```
+
+第一阶段优先支持 GitHub Actions。
+
+## 13.5 门禁项
+
+### GATE-001：Doctor
+
+```bash
+./scripts/harness doctor --ci
+```
+
+### GATE-002：生成漂移
+
+```bash
+./scripts/harness render --check
+```
+
+### GATE-003：规则一致性
+
+检查：
+
+* 重复规则 ID。
+* Agent 引用不存在规则。
+* 文档引用不存在规则。
+* Profile 冲突。
+* 过期规则例外。
+
+### GATE-004：上下文预算
+
+检查：
+
+* `CLAUDE.md` 大小。
+* 常驻 Token 估算。
+* 索引文件大小。
+* 单个规则文件大小。
+* Code Reviewer 是否内嵌完整规则。
+* 默认规则选择结果是否超限。
+
+### GATE-005：项目编译
+
+执行项目配置中的 `compileCommand`。
+
+### GATE-006：自动化测试
+
+执行项目配置中的 `testCommand`。
+
+### GATE-007：增量覆盖率
+
+要求：
+
+* 缺少 diff-cover 时不得跳过。
+* 缺少 JaCoCo XML 时失败。
+* 基线分支不存在时失败。
+* 低于阈值时失败。
+* 保存覆盖率报告。
+
+### GATE-008：未完成配置
+
+检查：
+
+* `[CUSTOMIZE]`
+* `TODO-HARNESS`
+* 示例项目名。
+* 空业务描述。
+* 示例包名。
+* 未配置构建命令。
+
+### GATE-009：敏感信息
+
+检查：
+
+* 密码。
+* Token。
+* Access Key。
+* 私钥。
+* `.env`。
+* 生产数据库连接信息。
+* Kubernetes Secret 明文。
+
+## 13.6 门禁等级
+
+```text
+error：阻止合并
+warning：展示警告
+info：仅展示
+```
+
+Core 强制规则不得降级。
+
+## 13.7 CI 报告
+
+```text
+Harness Quality Report
+
+[PASS] Harness 配置校验
+[PASS] 规则一致性
+[PASS] 上下文预算
+[PASS] 生成文件漂移检查
+[PASS] Maven 编译
+[FAIL] 单元测试
+[PASS] 增量覆盖率：86.4%
+[WARN] Git Hook 未安装
+
+Result: FAILED
+```
+
+## 13.8 分支保护
+
+推广指南要求：
+
+* 主分支禁止直接推送。
+* Harness CI 设置为 Required Check。
+* CI 不通过禁止合并。
+* 至少一名 Reviewer。
+* 普通开发者不得绕过。
+* 管理员绕过必须有审计记录。
+
+## 13.9 验收标准
+
+* `git push --no-verify` 后 CI 仍执行。
+* 生成文件漂移时 CI 失败。
+* 上下文超预算时 CI 失败。
+* 覆盖率不足时 CI 失败。
+* 单测失败时 CI 失败。
+* CI 能上传测试和覆盖率报告。
+* CI 模板可在至少两个 Java 项目运行。
+
+---
+
+# 14. HR-006：Agent、规范和 CI 规则一致性
+
+## 14.1 需求目标
+
+Agent、规范文档和 CI 不再各自维护一套规则。
+
+所有规则由统一 `rules.yaml` 管理。
+
+## 14.2 规则格式
+
+```yaml
+rules:
+  - id: HTTP-ARCH-001
+    title: Controller 不承载核心业务逻辑
+    description: Controller 只负责参数接收、校验、调用服务和返回结果。
+    severity: error
+    enforced: false
+
+    selectors:
+      profiles:
+        - spring-http
+      paths:
+        include:
+          - "**/controller/**/*.java"
+      tasks:
+        - feature-development
+        - refactor
+        - code-review
+
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+
+    content:
+      path: rules/controller.md
+
+    context:
+      priority: high
+      estimatedTokens: 450
+```
+
+## 14.3 规则字段
+
+| 字段                     | 说明                 |
+| ---------------------- | ------------------ |
+| `id`                   | 全局唯一规则编号           |
+| `title`                | 规则标题               |
+| `description`          | 规则说明               |
+| `severity`             | error、warning、info |
+| `enforced`             | 是否为不可降级规则          |
+| `selectors`            | 按需加载条件             |
+| `checks.agent`         | Agent 是否使用         |
+| `checks.ci`            | CI 是否检查            |
+| `checks.documentation` | 是否进入规范             |
+| `content.path`         | 详细规则文件             |
+| `context.priority`     | 上下文选择优先级           |
+| `estimatedTokens`      | Token 估算           |
+| `deprecated`           | 是否废弃               |
+| `replacedBy`           | 替代规则               |
+
+## 14.4 规则编号
+
+```text
+CORE-AI-001
+CORE-SEC-001
+JAVA-CODE-001
+JAVA-TEST-001
+HTTP-ARCH-001
+MQ-IDEMPOTENT-001
+JOB-LOCK-001
+```
+
+规则 ID 发布后不得复用。
+
+## 14.5 Agent 设计
+
+Agent 不内嵌完整规则正文。
+
+Agent 只包含：
+
+* 任务流程。
+* 规则选择命令。
+* 上下文预算要求。
+* 报告格式。
+* 禁止事项。
+
+Code Reviewer 示例：
+
+```markdown
+# Code Reviewer
+
+1. 获取当前 Git Diff。
+2. 对变更文件进行分类。
+3. 执行 harness rules select。
+4. 仅读取返回的规则文件。
+5. 不得读取完整规则库。
+6. 按规则 ID 输出审查结果。
+7. 无法确认时标记待人工确认。
+```
+
+## 14.6 Code Review 报告
+
+```markdown
+# 代码审查报告
+
+## 必须修复
+
+### [HTTP-ARCH-001] Controller 包含业务逻辑
+
+文件：
+src/main/java/.../TaxController.java
+
+位置：
+48-72 行
+
+证据：
+Controller 中直接执行了税金计算和数据库查询。
+
+建议：
+将计算逻辑移动到 TaxService。
+```
+
+每个问题必须：
+
+* 引用规则 ID。
+* 标明文件和位置。
+* 给出证据。
+* 给出修改建议。
+* 不得以个人偏好代替规则。
+
+## 14.7 规范文档生成
+
+`docs/harness/index.md` 只生成索引。
+
+详细规范按主题生成到独立文件。
+
+规范中展示规则 ID。
+
+## 14.8 项目例外
+
+```yaml
+ruleOverrides:
+  HTTP-ARCH-006:
+    severity: warning
+    reason: 历史接口暂未完成分层
+    owner: finance-platform
+    expiresAt: 2026-12-31
+```
+
+要求：
+
+* Core 强制规则不可降级。
+* 必须填写原因。
+* 必须填写责任团队。
+* 建议填写到期时间。
+* 过期后 Doctor 和 CI 报警。
+
+## 14.9 一致性检查
+
+检查：
+
+* 重复规则 ID。
+* 不存在规则引用。
+* 废弃规则仍在使用。
+* Profile 覆盖 Core 强制规则。
+* 规则文件缺失。
+* Token 估算缺失。
+* 规则没有选择条件。
+* Agent 内嵌过多规则正文。
+
+## 14.10 验收标准
+
+* Agent、规范和 CI 使用同一规则源。
+* 新增规则不需要手工修改多个 Agent。
+* Agent 根据 Diff 选择规则。
+* Agent 报告包含规则 ID。
+* HTTP 任务不加载 MQ 规则。
+* 规则例外可追踪、可到期。
+* Core 强制规则不能降级。
+
+---
+
+# 15. HR-007：Harness Doctor 自检能力
+
+## 15.1 需求目标
+
+提供统一自检命令，检查：
+
+* 环境。
+* 配置。
+* 版本。
+* Profile。
+* 规则。
+* 上下文。
+* 生成文件。
+* CI。
+* Git Hook。
+* 安全设置。
+
+## 15.2 命令
+
+```bash
+./scripts/harness doctor
+./scripts/harness doctor --verbose
+./scripts/harness doctor --json
+./scripts/harness doctor --ci
+./scripts/harness doctor --fix
+```
+
+## 15.3 检查项
+
+### DOC-001：项目目录
+
+* 是否为 Git 仓库。
+* 是否存在 `pom.xml`。
+* 是否存在 Harness 配置。
+* 是否存在锁文件。
+* 是否存在生成文件。
+
+### DOC-002：Java
+
+* Java 是否安装。
+* Java 实际版本。
+* `JAVA_HOME`。
+* Java 是否满足项目配置。
+* Java 是否满足 Profile。
+
+### DOC-003：Maven
+
+* Maven 是否安装。
+* Maven 版本。
+* Maven Wrapper。
+* 多模块识别。
+* Maven 是否可以解析项目。
+
+### DOC-004：配置
+
+* YAML 格式。
+* Schema。
+* 必填字段。
+* Profile 是否存在。
+* Profile 是否冲突。
+* 构建命令。
+* 默认分支。
+
+### DOC-005：版本
+
+* 锁文件存在。
+* 版本存在。
+* Tag、Commit 和摘要匹配。
+* 是否直接使用 `main`。
+* Profile 校验和。
+
+### DOC-006：受管文件
+
+* 文件是否缺失。
+* 摘要是否一致。
+* 是否发生手工修改。
+* 是否存在旧受管文件。
+* 是否需要重新生成。
+
+### DOC-007：规则一致性
+
+* 重复规则 ID。
+* 无效规则引用。
+* 废弃规则。
+* 过期例外。
+* 规则文件缺失。
+* 强制规则被覆盖。
+
+### DOC-008：上下文预算
+
+检查：
+
+* `CLAUDE.md` 是否超过 8 KB。
+* 常驻上下文是否超过 Token 预算。
+* Agent 是否内嵌完整规则库。
+* 单个规则文件是否过大。
+* 索引文件是否包含完整规则正文。
+* Local 文件是否过大。
+* 默认规则选择是否超预算。
+* Code Review 最大规则数量是否超限。
+
+### DOC-009：CI
+
+* Workflow 是否存在。
+* Workflow 版本。
+* 是否包含 Doctor。
+* 是否包含 Render Check。
+* 是否包含上下文预算检查。
+* 是否包含编译、测试和覆盖率。
+* 是否包含敏感信息扫描。
+
+### DOC-010：Git Hook
+
+* Hook 是否安装。
+* Hook 是否为当前版本。
+* 是否具备执行权限。
+
+Hook 缺失默认是 warning。
+
+### DOC-011：覆盖率
+
+* JaCoCo 配置。
+* diff-cover。
+* XML 报告。
+* 基线分支。
+* 覆盖率阈值。
+
+### DOC-012：安全
+
+* 高风险 Git 命令权限。
+* 强制推送。
+* 递归删除。
+* 生产配置。
+* 私钥目录。
+* 明文密钥。
+
+## 15.4 输出格式
+
+```text
+Team Harness Doctor
+
+Project
+  [PASS] Git repository detected
+  [PASS] Maven project detected
+
+Runtime
+  [PASS] Java 8 detected
+  [WARN] Maven Wrapper not found
+
+Harness
+  [PASS] Version locked: 2.0.0
+  [PASS] Profiles valid
+  [FAIL] CLAUDE.md differs from generated output
+
+Context
+  [PASS] Always-loaded context: 1,640 tokens
+  [WARN] local/business.md estimated at 1,450 tokens
+  [PASS] Code review rule budget valid
+
+CI
+  [PASS] Harness workflow installed
+
+Summary
+  Passed: 15
+  Warnings: 2
+  Failed: 1
+
+Suggested action:
+  ./scripts/harness render
+```
+
+## 15.5 退出码
+
+```text
+0：检查通过，可包含 warning
+1：存在失败项
+2：参数或配置错误
+3：Harness 内部错误
+```
+
+## 15.6 JSON 输出
+
+```json
+{
+  "status": "failed",
+  "summary": {
+    "passed": 15,
+    "warnings": 2,
+    "failed": 1
+  },
+  "checks": [
+    {
+      "id": "DOC-006",
+      "status": "failed",
+      "message": "CLAUDE.md differs from generated output",
+      "suggestion": "./scripts/harness render"
+    }
+  ]
+}
+```
+
+## 15.7 自动修复
+
+允许自动修复：
+
+* 创建缺失的本地空文件。
+* 重新生成受管文件。
+* 修复脚本执行权限。
+* 安装或更新 Git Hook。
+* 修复 Harness 临时目录忽略配置。
+
+禁止自动修复：
+
+* 修改业务源代码。
+* 修改 Java 版本。
+* 修改 Maven 依赖。
+* 删除项目本地文件。
+* 降低安全规则。
+* 降低质量门禁。
+* 自动升级主版本。
+
+## 15.8 验收标准
+
+* 正常项目 Doctor 返回成功。
+* Java 不匹配时显示实际值和期望值。
+* Profile 冲突时显示冲突来源。
+* 上下文超限时显示具体文件和 Token 估算。
+* 生成文件漂移时给出修复命令。
+* JSON 输出可用于 CI。
+* `--fix` 不修改业务代码。
+
+---
+
+# 16. 统一 CLI
+
+统一入口：
+
+```bash
+./scripts/harness <command>
+```
+
+第一阶段支持：
+
+```text
+init
+render
+doctor
+version
+upgrade
+rollback
+rules
+install-hooks
+migrate
+```
+
+示例：
+
+```bash
+./scripts/harness init
+./scripts/harness render
+./scripts/harness rules select --task code-review --files ...
+./scripts/harness doctor
+./scripts/harness upgrade --check
+```
+
+---
+
+# 17. 初始化流程
+
+执行：
+
+```bash
+./scripts/harness init
+```
+
+系统应：
+
+1. 检查 Git 仓库。
+2. 读取 `pom.xml`。
+3. 识别 Java 版本。
+4. 识别 Spring Boot 版本。
+5. 识别 Maven Modules。
+6. 识别 Controller。
+7. 识别 MQ Consumer 和 Producer。
+8. 识别定时任务。
+9. 推荐 Profile。
+10. 生成 `.harness/config.yaml`。
+11. 创建 Local 文件。
+12. 生成规则索引。
+13. 生成最小 `CLAUDE.md`。
+14. 生成锁文件。
+15. 安装 CI 模板。
+16. 可选安装 Git Hook。
+17. 执行 Doctor。
+
+自动识别结果仅用于推荐，最终 Profile 由项目负责人确认。
+
+---
+
+# 18. 旧版本迁移
+
+## 18.1 命令
+
+```bash
+./scripts/harness migrate
+```
+
+## 18.2 迁移内容
+
+1. 识别旧版 `[CUSTOMIZE]`。
+2. 提取项目名称。
+3. 提取业务描述。
+4. 识别项目类型。
+5. 推荐 Profile。
+6. 将项目特殊内容迁移到 Local 文件。
+7. 拆分过大的本地规则。
+8. 备份旧文件。
+9. 生成新文件。
+10. 执行上下文预算检查。
+11. 执行 Doctor。
+
+## 18.3 备份路径
+
+```text
+.harness/backups/20260727-120000/
+```
+
+## 18.4 迁移报告
+
+```markdown
+# Harness Migration Report
+
+旧版本：1.8.0
+新版本：2.0.0
+
+## 已迁移
+- 项目名称
+- 业务简介
+- 项目特殊规则
+
+## 推荐 Profile
+- java-common
+- spring-mq
+- legacy-java8
+
+## 上下文调整
+- 原 CLAUDE.md：12,400 tokens
+- 新 CLAUDE.md：1,680 tokens
+- 详细规则已拆分为 9 个主题文件
+
+## 需要人工确认
+- 项目同时存在 Controller 和 MQ Consumer
+```
+
+---
+
+# 19. 非功能需求
+
+## 19.1 安全性
+
+* 不执行未锁定版本的远程脚本。
+* 下载内容必须校验。
+* 临时目录自动清理。
+* 更新采用原子替换。
+* 本地规则不得被覆盖。
+* 高风险命令必须人工确认。
+
+## 19.2 性能
+
+* `harness version` 应快速完成。
+* `render --check` 不执行 Maven 编译。
+* `doctor` 默认不执行完整测试。
+* 规则选择应在秒级完成。
+* 规则选择不得扫描整个大型仓库全部文件。
+* 支持仅基于 Git Diff 和目标文件选择规则。
+
+## 19.3 幂等性
+
+以下命令重复执行不得产生无意义变化：
+
+```text
+harness render
+harness doctor
+harness install-hooks
+```
+
+## 19.4 可观察性
+
+每个命令输出：
+
+* Harness 版本。
+* 项目名称。
+* 当前阶段。
+* 选择的 Profile。
+* 选择的规则数量。
+* Token 估算。
+* 成功、警告和失败数量。
+* 修复建议。
+
+## 19.5 可移植性
+
+第一阶段支持：
+
+* Linux。
+* macOS。
+* WSL。
+* Git Bash。
+
+优先使用 Maven Wrapper。
+
+---
+
+# 20. 交付物
+
+第一阶段至少交付：
+
+1. 新的 Core、Profile、Overlay 目录结构。
+2. 五个基础 Profile。
+3. Harness Config Schema。
+4. Profile Schema。
+5. Rules Schema。
+6. Lock Schema。
+7. 最小化 `CLAUDE.md` 模板。
+8. 规则索引生成能力。
+9. 规则按需选择器。
+10. 上下文预算控制能力。
+11. 项目 Local 规则机制。
+12. 受管文件清单。
+13. 原子生成机制。
+14. 版本锁定。
+15. 版本检查。
+16. 指定版本升级。
+17. 回滚能力。
+18. GitHub Actions CI 模板。
+19. Agent 动态规则选择能力。
+20. 统一规则治理。
+21. Harness Doctor。
+22. 旧版本迁移工具。
+23. HTTP 示例项目。
+24. MQ 示例项目。
+25. HTTP + MQ 混合示例项目。
+26. Java 8 存量示例项目。
+27. 自动化测试。
+28. 使用说明。
+29. 发布说明。
+30. 迁移指南。
+
+---
+
+# 21. 研发任务拆分
+
+## Epic 1：配置和 Profile
+
+包含：
+
+* Config Schema。
+* Profile Schema。
+* Profile 加载。
+* Profile 依赖。
+* Profile 冲突。
+* Project Overlay。
+
+## Epic 2：规则模型和按需选择
+
+包含：
+
+* Rules Schema。
+* Selector。
+* Task 类型。
+* 文件路径匹配。
+* Git Diff 匹配。
+* Profile 匹配。
+* Token 预算。
+* 规则排序和截断。
+
+## Epic 3：模板和生成
+
+包含：
+
+* 最小 `CLAUDE.md`。
+* Profile Index。
+* Local Index。
+* 规则主题文件生成。
+* 受管文件清单。
+* 原子替换。
+* 漂移检查。
+
+## Epic 4：Agent 和规则治理
+
+包含：
+
+* Code Reviewer 改造。
+* Test Agent 改造。
+* Agent 动态规则加载。
+* 规则 ID。
+* 规则例外。
+* 规则一致性检查。
+
+## Epic 5：版本管理
+
+包含：
+
+* VERSION。
+* Lock。
+* Upgrade Check。
+* 指定版本升级。
+* Rollback。
+* Changelog。
+* 渠道管理。
+
+## Epic 6：CI
+
+包含：
+
+* Doctor Check。
+* Render Check。
+* Rule Check。
+* Context Budget Check。
+* Compile。
+* Test。
+* Diff Coverage。
+* Secret Scan。
+
+## Epic 7：Doctor 和迁移
+
+包含：
+
+* 环境检查。
+* 配置检查。
+* Profile 检查。
+* 上下文检查。
+* CI 检查。
+* Hook 检查。
+* 安全检查。
+* JSON 输出。
+* 自动修复。
+* 旧版迁移。
+
+---
+
+# 22. 推荐实施顺序
+
+## 迭代一：规则模型和按需加载基础
+
+完成：
+
+* Core、Profile、Overlay。
+* Config Schema。
+* Rules Schema。
+* 规则选择器。
+* 上下文预算。
+
+本迭代先解决规则架构和上下文膨胀问题。
+
+## 迭代二：生成和 Agent 改造
+
+完成：
+
+* 最小 `CLAUDE.md`。
+* 规则索引。
+* Local 文件。
+* 受管文件。
+* Agent 动态规则加载。
+* 规则一致性检查。
+
+## 迭代三：版本、CI 和 Doctor
+
+完成：
+
+* 版本锁定。
+* 升级和回滚。
+* CI 门禁。
+* Doctor。
+* 迁移工具。
+
+---
+
+# 23. 验收场景
+
+## 场景一：Java 8 MQ 服务
+
+启用：
+
+```yaml
+profiles:
+  - java-common
+  - spring-mq
+  - legacy-java8
+```
+
+验收：
+
+* 不加载 HTTP Controller 规则。
+* 加载 JUnit 4 规则。
+* 修改 Consumer 时加载 MQ 幂等和重试规则。
+* `CLAUDE.md` 不超过预算。
+
+## 场景二：Java 17 HTTP 服务
+
+启用：
+
+```yaml
+profiles:
+  - java-common
+  - spring-http
+```
+
+验收：
+
+* 修改 Controller 时加载 HTTP 规则。
+* 不加载 MQ 规则。
+* Code Reviewer 根据 Diff 选择规则。
+* CI 可以执行。
+
+## 场景三：HTTP + MQ 混合服务
+
+启用：
+
+```yaml
+profiles:
+  - java-common
+  - spring-http
+  - spring-mq
+```
+
+验收：
+
+* 修改 Controller 只加载 HTTP 相关规则。
+* 修改 Consumer 只加载 MQ 相关规则。
+* 同时修改时合并规则，但不超过预算。
+* 规则 ID 无冲突。
+
+## 场景四：大型存量项目
+
+验收：
+
+* 启用多个 Profile 后 `CLAUDE.md` 仍保持精简。
+* 完整规范不进入常驻上下文。
+* 规则选择器只依据 Diff 选择必要规则。
+* Doctor 能识别超大本地规则文件。
+
+## 场景五：旧版本迁移
+
+验收：
+
+* 原项目内容已备份。
+* 项目特殊规则迁移到 Local 文件。
+* 大型规范被拆分。
+* 新 `CLAUDE.md` 满足 Token 预算。
+* Doctor 检查通过。
+
+---
+
+# 24. 第一阶段完成定义
+
+满足以下条件，第一阶段才视为完成：
+
+1. Core、Profile 和 Project Overlay 已分离。
+2. HTTP、MQ、Job 等项目使用不同规则。
+3. 业务项目不直接修改生成的 `CLAUDE.md`。
+4. 本地规则升级后不会丢失。
+5. `CLAUDE.md` 仅保留最小常驻上下文。
+6. 完整 Profile 规则不会默认加载。
+7. 规则可以按任务、文件和 Diff 动态选择。
+8. Code Reviewer 不内嵌完整规则库。
+9. 单次规则加载具有文件数和 Token 预算。
+10. 超出预算时有明确排序和截断机制。
+11. 每个项目锁定明确 Harness 版本。
+12. 项目不得默认使用 Harness `main`。
+13. Git Hook 可跳过，但 CI 不可绕过。
+14. Agent、规范和 CI 使用统一规则源。
+15. 所有 Agent 问题均引用规则 ID。
+16. Doctor 可以检查配置、版本、规则、上下文和 CI。
+17. 旧版本具备可执行迁移路径。
+18. 至少通过五类验收场景。
+19. 核心 CLI 命令具备自动化测试。
+20. 第一阶段能力可在真实 Java 微服务中稳定运行。

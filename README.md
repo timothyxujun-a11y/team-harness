@@ -1,241 +1,168 @@
-# Team AI Engineering Kit - Claude Code 工程化方案
+# Team Harness — 仓库级 AI 工程化系统
 
-一套可复用的 Claude Code AI 工程化"外壳"，通过 `sync.sh` 脚本一键同步到团队现有 Java/Spring Boot 项目，全员获得一致、安全、高效的 AI 协作体验。
+将 Claude Code 的项目规则从「一份大 CLAUDE.md」升级为**分层、按需加载、可版本化、可验证**的 Harness：团队公共规则、技术类型规则、项目本地规则三层分离；规则按任务/文件/Diff 动态选择；每个业务项目锁定明确版本；本地 Git Hook 快速反馈 + CI 不可绕过的正式门禁。
+
+> 适用于 Java + Spring Boot + Maven 微服务（HTTP / MQ / Job / Java8 存量）。
 
 ## 前置条件
 
-- Java 8+（或项目实际使用的版本）
-- Maven 3.6+
-- Claude Code 已安装并可用
-- Git
+- Python 3.7+（CLI 运行；首次自动 bootstrap venv 并安装 pyyaml）
+- Java 8+/Maven 3.6+（业务项目编译测试；优先 Maven Wrapper）
+- Git、Claude Code
 
-## 目录结构
+## 架构概览
+
+**Harness 主仓库**（本仓库）提供规则源与工具：
 
 ```
-harness-project/
-├── README.md                          # 本文件：方案总览 + 适配指南
-├── CLAUDE.md                          # 【核心】约定总纲（AI 首先读取）
-├── docs/
-│   ├── conventions.md                 # 详细编码规范（CLAUDE.md 引用）
-│   └── superpowers/specs/             # 设计文档
-├── .claude/
-│   ├── settings.json                  # 权限 allow/deny 配置
-│   ├── agents/
-│   │   ├── code-reviewer.md           # 子 agent：代码审查
-│   │   └── test-writer.md             # 子 agent：编写单测
-│   ├── commands/
-│   │   ├── test.md                    # /test：按改动范围跑测试
-│   │   ├── review.md                  # /review：评审当前改动
-│   │   └── commit.md                  # /commit：生成 Conventional Commit
-│   ├── skills/                        # 项目级 skill（随 sync 分发）
-│   │   ├── grill-me/                  # /grill-me：需求拷问入口（MIT）
-│   │   └── grilling/                  # 实际拷问提示词（模型可自动触发）
-│   └── plans/                         # 需求文档（Plan 模式产物）
-│       └── archive/                   # 已完成需求归档
-├── scripts/
-│   ├── sync.sh                        # 从 team-harness 仓库同步配置
-│   └── install-git-hooks.sh           # 一键安装 git pre-commit hook
-└── git-hooks/
-    └── pre-commit                     # 提交前编译检查
+team-harness/
+├── core/              # Core：适用全部项目的强制基础规则
+├── profiles/          # Profile：java-common / spring-http / spring-mq / spring-job / legacy-java8
+├── templates/         # CLAUDE.md / settings.json / CI workflow / profile-index 模板
+├── schemas/           # config / lock / profile / rules JSON Schema
+├── scripts/harness    # 统一 CLI 入口（Python）
+├── git-hooks/         # pre-commit(编译) / pre-push(增量覆盖率)
+└── examples/          # 4 个示例项目（http / mq / hybrid / legacy-java8）
 ```
 
-## 如何适配到真实项目
+**业务项目接入后**（由 `harness init` + `render` 生成）：
 
-### 方式一：脚本同步（推荐）
+```
+business-service/
+├── CLAUDE.md               # 自动生成，最小常驻上下文（≤2000 Token）
+├── CLAUDE.local.md         # 项目本地规则（不被覆盖）
+├── .harness/
+│   ├── config.yaml         # 项目配置（Profile/构建/预算）
+│   ├── lock.yaml           # 版本锁（harness 版本 + Profile checksum）
+│   ├── managed-files.json  # 受管文件清单 + SHA256
+│   └── local/              # 项目本地规则（business/architecture/...）
+├── docs/harness/           # 生成的规则索引（按需加载第二层）
+└── .claude/{agents,settings.json}   # 分发的 Agent 与权限
+```
 
-在目标 Java 项目根目录执行一行命令即可拉取最新配置：
+## 快速开始
 
 ```bash
-# 首次使用：一键 bootstrap（下载并运行 sync.sh）
-curl -fsSL https://raw.githubusercontent.com/timothyxujun-a11y/team-harness/main/scripts/sync.sh | bash
+# 1. 在业务项目根目录初始化（生成 .harness/config.yaml）
+./scripts/harness init --name my-service --java-version 17 --profiles java-common,spring-http
+
+# 2. 编辑 .harness/config.yaml 填写项目描述，然后生成受管文件
+./scripts/harness render
+
+# 3. 自检
+./scripts/harness doctor
 ```
 
-首次执行后，`sync.sh` 会复制到 `scripts/sync.sh`，后续直接运行：
+## CLI 命令参考
 
 ```bash
-# 检查有哪些更新（不实际修改）
-./scripts/sync.sh --check
-
-# 同步最新配置（交互式确认覆盖已修改的文件）
-./scripts/sync.sh
-
-# 同步并自动安装 git hooks
-./scripts/sync.sh --hooks
-
-# 强制覆盖所有文件（不推荐，会丢失已填写的 [CUSTOMIZE] 值）
-./scripts/sync.sh --force
+./scripts/harness <command>
 ```
-
-同步完成后：
-
-```bash
-# 1. 填写 [CUSTOMIZE] 占位
-grep -rn '[CUSTOMIZE' .
-
-# 2. 提交一次验证 pre-commit 生效
-git add .
-git commit -m "chore: 接入团队 AI 工程化规范"
-```
-
-> **sync.sh 智能保护**：如果本地文件已填写 `[CUSTOMIZE]`（不再包含占位符），同步时会询问确认后才覆盖，避免丢失项目定制内容。
-
-### 方式二：按需挑选
-
-如果项目已有 `.claude/` 目录或 `CLAUDE.md`，按需合并：
-
-1. **合并 `CLAUDE.md`**：把约定章节并入现有文件
-2. **合并 `.claude/settings.json`**：把 allow/deny 列表合并到现有配置
-3. **新增 agents**：复制需要的 agent 文件到 `.claude/agents/`
-4. **新增 commands**：复制需要的命令文件到 `.claude/commands/`
-
-## [CUSTOMIZE] 占位清单
-
-适配时需要填写的占位项：
-
-| 文件 | 占位 | 说明 |
-|------|------|------|
-| `CLAUDE.md` | `[CUSTOMIZE: 项目名]` | 如 `order-service` |
-| `CLAUDE.md` | `[CUSTOMIZE: 业务简介]` | 如 `订单交易核心服务` |
-| `.claude/settings.json` | （可选，非占位）`env.JAVA_HOME` | 默认继承系统 `JAVA_HOME`；需指定时自行添加 `"env": {"JAVA_HOME": "/path/to/jdk"}` |
-
-## 常用命令速查
-
-### Claude Code 命令
 
 | 命令 | 作用 |
 |------|------|
-| `/test` | 按改动范围运行相关测试 |
-| `/test OrderServiceTest` | 运行指定测试类 |
-| `/review` | 评审当前代码改动 |
-| `/commit` | 生成 Conventional Commit 消息并提交 |
-| `/grill-me` | 动手前对需求/设计做拷问式打磨（SDD 需求阶段，MIT） |
+| `init` | 初始化项目，生成 `.harness/config.yaml` |
+| `render` | 生成受管文件（CLAUDE.md / settings / workflow / agents / 索引） |
+| `render --check` | 检查生成文件是否漂移（不修改，CI 用） |
+| `render --diff` | 输出实际与预期差异 |
+| `doctor` | 自检（12 类检查：环境/配置/版本/规则/上下文/CI/Hook/安全） |
+| `doctor --json` | JSON 输出（CI 集成） |
+| `doctor --fix` | 自动修复（生成缺失文件、装 Hook；不改业务代码） |
+| `rules select --task <t> --files <f>` | 按任务/文件选择规则（输出 JSON，含选择原因与 Token 估算） |
+| `rules check` | 规则一致性检查（重复 ID / 缺失文件 / Token 估算） |
+| `version` | 版本与锁文件信息 |
+| `upgrade --check` | 检查升级影响 |
+| `upgrade --to <ver> --source <path>` | 本地校验升级到指定版本 |
+| `rollback` | 回滚到上一个版本 |
+| `install-hooks` | 安装 Git Hook（`--uninstall` 卸载） |
+| `migrate` | v1 → v2 迁移（识别 `[CUSTOMIZE]`、备份、生成新结构） |
 
-### 构建命令（Maven）
+## 分层规则
+
+- **Core**（`core/`）：适用全部项目的强制基础规则（AI 行为、安全、Git 工作流、质量门禁）。不可被 Profile/Overlay 降级。
+- **Profile**（`profiles/`）：按技术类型。`java-common`（通用）、`spring-http`（Controller/DTO/OpenAPI）、`spring-mq`（Consumer/幂等/重试）、`spring-job`（分布式锁/批处理）、`legacy-java8`（语法限制/JUnit4）。
+- **Project Overlay**（`.harness/local/`）：仅本项目。补充规则，不可覆盖 Core 强制规则。
+
+合并顺序：`Core → Profile 依赖 → 显式 Profile → Project Overlay`。
+
+## 按需加载（HR-003）
+
+CLAUDE.md 只保留最小常驻上下文。详细规则三层加载：常驻 → 规则索引 → 详细规则。
 
 ```bash
-mvn clean compile -DskipTests    # 编译
-mvn test                          # 全量测试
-mvn test -Dtest=OrderServiceTest  # 指定测试类
-mvn clean package -DskipTests     # 打包
+# 修改 Controller 时，只选 HTTP 相关规则（不加载 MQ/Job）
+./scripts/harness rules select --task code-review \
+  --files src/main/java/com/x/controller/TaxController.java
 ```
 
-### Git Hooks
+输出含 `matchedProfiles`、`selectedRules`（每条带规则 ID、路径、原因、Token 估算）。超过 `codeReview` 预算（默认 ≤15 规则 / ≤8000 Token）按优先级截断。
+
+## 版本管理（HR-004）
+
+每个业务项目通过 `.harness/lock.yaml` 锁定 Harness 版本（语义化版本），**不得默认追踪 main**。
 
 ```bash
-./scripts/install-git-hooks.sh                    # 装 pre-commit（编译）+ pre-push（增量覆盖率）
-git commit --no-verify                            # 跳过提交检查（不推荐）
-git push --no-verify                              # 跳过推送检查（不推荐）
-rm -f .git/hooks/pre-commit .git/hooks/pre-push   # 卸载
+./scripts/harness version                    # 查看当前版本与锁
+./scripts/harness upgrade --to 2.1.0 --source /path/to/team-harness   # 本地校验升级
+./scripts/harness rollback                   # 回滚到上一版本
 ```
 
-## 增量单测覆盖率（> 80%）
+升级流程：解析本地 source → 校验 commit + Profile checksum → 临时渲染 → 原子替换 → 更新嵌套锁文件 → Doctor。
 
-骨架通过 **JaCoCo（全量报表）+ diff-cover（增量卡阈值）** 实现「增量行覆盖率 > 80%」，在 **pre-push** hook 校验。对从 0 起步的项目友好：只要求新写的代码有测试，存量不强求。
+## CI 强制门禁（HR-005）
 
-### 接入步骤
+`.github/workflows/harness-check.yml`（由 render 生成）执行 9 个 Gate：
 
-1. **pom.xml 加 JaCoCo**（`prepare-agent` + `report`，**不用 `check`**）：
+| Gate | 检查 |
+|------|------|
+| GATE-001 | Doctor 自检 |
+| GATE-002 | 生成文件漂移 |
+| GATE-003 | 规则一致性 |
+| GATE-004 | 上下文预算 |
+| GATE-005 | Maven 编译 |
+| GATE-006 | 自动化测试 |
+| GATE-007 | 增量覆盖率（diff-cover > 阈值） |
+| GATE-008 | 未完成配置（`[CUSTOMIZE]`/TODO-HARNESS/示例包名） |
+| GATE-009 | 敏感信息扫描（命中阻断合并） |
 
-   ```xml
-   <plugin>
-     <groupId>org.jacoco</groupId>
-     <artifactId>jacoco-maven-plugin</artifactId>
-     <version>0.8.12</version>
-     <executions>
-       <execution>
-         <id>prepare-agent</id>
-         <goals><goal>prepare-agent</goal></goals>
-       </execution>
-       <execution>
-         <id>report</id>
-         <phase>verify</phase>
-         <goals><goal>report</goal></goals>
-       </execution>
-     </executions>
-   </plugin>
-   ```
+本地 Git Hook（pre-commit 编译、pre-push 增量覆盖率）可 `--no-verify` 跳过；CI 不可绕过。
 
-   > Java 8 项目用 0.8.x（0.8.11 / 0.8.12），勿用 0.9.x。
+## 迁移指南（v1 → v2）
 
-2. **装 diff-cover**（全局，一次性）：`pip install diff-cover`
+v1 的 `[CUSTOMIZE]` 占位 + `sync.sh` 已废弃，改用 `config.yaml` + `harness` CLI。
 
-3. **安装 hook**：`./scripts/install-git-hooks.sh`（同时装 pre-commit + pre-push）
-
-4. **skipTests 处理**：若 pom 的 `maven-surefire-plugin` 配了 `<skipTests>true</skipTests>`，pre-push 会用 `-DskipTests=false` 强制覆盖（不改 pom 默认）。
-
-### pre-push 工作流
-
-```
-git push → 检查 diff-cover（缺失则提示并跳过，不阻塞）
-       → mvn -DskipTests=false test → target/site/jacoco/jacoco.xml
-       → diff-cover jacoco.xml --compare-branch=origin/main --fail-under=80
-       → 退出码非 0 阻断 push
+```bash
+# 在 v1 项目根目录
+./scripts/harness migrate
 ```
 
-### 注意
+迁移会：识别旧 `[CUSTOMIZE]` → 提取项目名/描述到 `config.yaml` → 推荐 Profile → 备份旧文件到 `.harness/backups/<时间戳>/` → 生成 Local 骨架与受管文件 → 自检。幂等（已是 v2 则提示）。
 
-- 基线分支约定 `origin/main`，推送前确保已 `git fetch`
-- diff-cover 统计**增量行覆盖**，与 JaCoCo 全量 instruction 口径不同
-- 未装 diff-cover 的开发机会跳过校验（不阻塞），团队统一安装后生效
-- 私有仓库首次拉依赖慢，pre-push 仅在 `.m2` warm 后顺畅
+## 示例项目
 
-## 工作流：规范驱动开发（SDD）
+`examples/` 下 4 个 harness 接入示例（HTTP / MQ / 混合 / Java8 存量），演示不同 Profile 组合、本地规则结构与规则命中：
 
-### 完整流程（半天以上工作量）
-
-```
-1. 生成需求文档
-   → 在 Claude Code 中描述需求，可用 `/grill-me` 拷问式打磨，再生成 .claude/plans/feat-xxx/requirements.md
-
-2. 人工审核
-   → 逐项检查 requirements.md，确认 AI 理解正确
-
-3. 生成任务清单并执行
-   → 让 AI 生成 task.md，然后逐步实施
-   → 核心逻辑（Service/Domain）走 TDD：红-绿-重构
-   → 每个任务完成后自动编译验证
-
-4. 代码审查
-   → 由 code-reviewer 子 agent 执行 /review，按报告修复「必须修复」项
-
-5. 提交
-   → 执行 /commit，生成规范提交消息
-
-6. 归档
-   → mv .claude/plans/feat-xxx .claude/plans/archive/
-```
-
-### 快速流程（半天以内工作量）
-
-```
-1. 在 Claude Code 中直接描述需求
-2. AI 遵守 CLAUDE.md 和 docs/conventions.md 编写代码
-3. 修改后自动编译验证
-4. 执行 /review 审查
-5. 执行 /commit 提交
+```bash
+cd examples/http-service
+./scripts/harness render --check       # 无漂移
+./scripts/harness doctor               # 自检
+./scripts/harness rules select --task code-review --files src/main/java/x/controller/UserController.java
 ```
 
 ## 设计原则
 
-1. **流水的工具，铁打的规范**：规范写在文件里，不依赖某个 AI 工具的特定功能
-2. **AI 在约束下工作**：通过 rules、settings.json、git hooks 三层约束
-3. **改动最小化**：sync.sh 一键同步，适配只需填占位
-4. **不绑死技术栈**：Maven 适配，Java 版本从构建文件读取
-5. **不含格式化**：不集成 Spotless/google-java-format 等格式化工具，只做编译期静态规则检查
+1. **最小常驻上下文**：CLAUDE.md 只放总纲，完整规则按需加载。
+2. **单一规则源**：规则只在 `rules.yaml` 定义一次，Agent/规范/CI 共享。
+3. **公共与本地隔离**：Harness 管理的文件可重新生成；项目本地文件不被覆盖。
+4. **本地反馈与正式门禁分离**：Git Hook 可跳过，CI 不可绕过。
+5. **版本可控**：业务项目锁定明确版本，不默认追踪 main。
 
-## 第三方组件与许可
+## 自动化测试
 
-| 组件 | 来源 | 许可 |
-|------|------|------|
-| grill-me / grilling | [mattpocock/skills](https://github.com/mattpocock/skills) | MIT · Copyright (c) 2026 Matt Pocock |
+```bash
+PYTHONPATH=scripts python -m unittest discover -s tests   # 44 个测试
+```
 
 ## 版本
 
-- v1.8.0 (2026-07-25)：移除 Checkstyle 依赖（pre-commit 改纯编译检查）、删除 Swagger 注解要求、统一 API 入参/出参命名为 XxxDTO/XxxVO
-- v1.7.0 (2026-07-25)：开发流程加入 TDD（核心逻辑）与开发后子 agent code-review 约定
-- v1.6.0 (2026-07-25)：新增 grill-me 需求拷问 skill（MIT，纳入 sync 分发）
-- v1.4.0 (2026-07-24)：新增 `config/checkstyle.xml` 规则模板，pre-commit 检查名副其实；修复 sync.sh 同步后脚本无执行权限的 bug
-- v1.3.0 (2026-07-23)：前置条件改为 Java 8+；测试框架改为 JUnit 4；强制单测禁止启动 Spring 容器
-- v1.2.0 (2026-07-23)：构建工具固定为 Maven，移除 Gradle 支持
-- v1.1.0 (2026-07-23)：新增 `sync.sh` 脚本同步方式，支持 `--check`/`--force`/`--hooks`
-- v1.0.0 (2026-07-23)：初始版本，11 个交付文件
+见 [CHANGELOG.md](CHANGELOG.md)。当前 **v2.1.0**。

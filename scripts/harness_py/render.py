@@ -14,6 +14,7 @@ from harness_py.utils import (
     get_core_dir,
     get_profiles_dir,
     get_templates_dir,
+    get_harness_source_root,
     sha256_of_file,
     safe_read_file,
     safe_read_yaml,
@@ -267,11 +268,27 @@ def _build_file_map(project_root):
 # 构建模板变量
 # ---------------------------------------------------------------------------
 
+def _resolve_profile_dirs(project_root, config):
+    """解析启用的 Profile（含依赖顺序），返回 [{name, dir}] 列表。"""
+    profile_names = config.get("profiles", []) or []
+    try:
+        ordered = resolve_profiles(project_root, profile_names)
+    except (ValueError, TypeError):
+        ordered = profile_names
+    profiles_dir = get_profiles_dir(project_root)
+    result = []
+    for name in ordered:
+        pdir = os.path.join(profiles_dir, name)
+        if os.path.isdir(pdir):
+            result.append({"name": name, "dir": pdir})
+    return result
+
+
 def _build_claude_variables(project_root, config):
     """构建 CLAUDE.md 模板变量。"""
-    build_cmds = get_build_commands(config) or {}
+    build_cmds = get_build_commands(project_root) or {}
 
-    profiles = resolve_profiles(config)
+    profiles = _resolve_profile_dirs(project_root, config)
     enabled_names = [p.get("name", "") for p in profiles if p.get("name")]
     enabled_profiles_text = ", ".join(enabled_names)
 
@@ -301,9 +318,9 @@ def _build_claude_variables(project_root, config):
         "project_description": config.get("project", {}).get("description", ""),
         "java_version": config.get("runtime", {}).get("javaVersion", "11"),
         "enabled_profiles": enabled_profiles_text,
-        "compile_command": build_cmds.get("compile", "mvn compile -DskipTests"),
-        "test_command": build_cmds.get("test", "mvn test"),
-        "package_command": build_cmds.get("package", "mvn clean package -DskipTests"),
+        "compile_command": build_cmds.get("compileCommand", "mvn clean compile -DskipTests"),
+        "test_command": build_cmds.get("testCommand", "mvn test"),
+        "package_command": build_cmds.get("packageCommand", "mvn clean package -DskipTests"),
         "rule_index": rule_index,
         "local_rules_index": ".harness/local/index.yaml",
         "context_max_tokens": 2000,
@@ -358,7 +375,7 @@ def _generate_claude_md(project_root, config):
 
 def _generate_profile_indexes(project_root, config):
     """为每个启用的 Profile 生成 docs/harness/<name>/index.md。"""
-    profiles = resolve_profiles(config)
+    profiles = _resolve_profile_dirs(project_root, config)
     tpl = _load_template("profile-index.md.tpl")
     results = {}
 
@@ -395,16 +412,35 @@ def _generate_settings_json(project_root, config):
 def _generate_workflow(project_root, config):
     """生成 .github/workflows/harness-check.yml 内容。"""
     tpl = _load_template("workflows/harness-check.yml.tpl")
-    build_cmds = get_build_commands(config) or {}
+    build_cmds = get_build_commands(project_root) or {}
     return _render_template(tpl, {
         "harness_version": HARNESS_VERSION,
         "java_version": config.get("runtime", {}).get("javaVersion", "11"),
-        "compile_command": build_cmds.get("compile", "mvn compile -DskipTests"),
-        "test_command": build_cmds.get("test", "mvn test"),
+        "compile_command": build_cmds.get("compileCommand", "mvn clean compile -DskipTests"),
+        "test_command": build_cmds.get("testCommand", "mvn test"),
         "diff_base_branch": "origin/main",
         "diff_coverage_threshold": "80",
         "project_name": config.get("project", {}).get("name", "unknown"),
     })
+
+
+def _generate_agents(project_root, config):
+    """把 harness 管理的 Agent 分发到业务项目 .claude/agents/。
+
+    Agent 由统一规则源驱动（HR-006），不内嵌规则正文，分发后业务项目可直接使用。
+    返回 {相对路径: 内容} 映射。
+    """
+    src_agents_dir = os.path.join(get_harness_source_root(), ".claude", "agents")
+    results = {}
+    if not os.path.isdir(src_agents_dir):
+        return results
+    for fname in sorted(os.listdir(src_agents_dir)):
+        if not fname.endswith(".md"):
+            continue
+        content = safe_read_file(os.path.join(src_agents_dir, fname))
+        if content is not None:
+            results[f".claude/agents/{fname}"] = content
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +499,15 @@ def render_all(project_root=None, dry_run=False, diff_mode=False):
         managed_files[".github/workflows/harness-check.yml"] = file_map[".github/workflows/harness-check.yml"]
     except Exception as e:
         errors.append(f"生成 Workflow 失败: {e}")
+
+    try:
+        # 5. Agents（harness 管理的子 Agent 分发到业务项目）
+        agents = _generate_agents(root, config)
+        for rel_path, content in agents.items():
+            file_manifest[rel_path] = content
+            managed_files[rel_path] = os.path.join(root, rel_path)
+    except Exception as e:
+        errors.append(f"生成 Agents 失败: {e}")
 
     # 记录受管文件清单（含 SHA256）
     managed_records = {}
@@ -585,6 +630,16 @@ def render_check(project_root=None):
     except Exception as e:
         drifts.append(f".github/workflows/harness-check.yml (错误: {e})")
 
+    # 检查 agents
+    try:
+        agents = _generate_agents(root, config)
+        for rel_path, expected_content in agents.items():
+            actual = safe_read_file(os.path.join(root, rel_path)) or ""
+            if actual != expected_content:
+                drifts.append(rel_path)
+    except Exception as e:
+        drifts.append(f"agents (错误: {e})")
+
     ok = len(drifts) == 0
     return ok, drifts
 
@@ -604,6 +659,13 @@ def render_diff(project_root=None):
     try:
         profile_indexes = _generate_profile_indexes(root, config)
         for rel_path, expected_content in profile_indexes.items():
+            checks[rel_path] = (expected_content, os.path.join(root, rel_path))
+    except Exception:
+        pass
+
+    try:
+        agents = _generate_agents(root, config)
+        for rel_path, expected_content in agents.items():
             checks[rel_path] = (expected_content, os.path.join(root, rel_path))
     except Exception:
         pass

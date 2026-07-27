@@ -7,6 +7,44 @@
 
 ---
 
+## 2.1.0 — 2026-07-27
+
+本次版本修复 2.0.0 的端到端阻塞缺陷，并补全需求文档（HR-001~HR-007）声称但实际缺失的能力，使第一阶段真正可用。44 个自动化测试全绿（含端到端）。
+
+### Added
+
+- **hooks 模块**：`harness install-hooks` 安装/卸载 Git Hook，含版本戳校验与幂等（`--uninstall`）。
+- **migrate 模块**：`harness migrate` 自动 v1→v2 迁移（识别 `[CUSTOMIZE]`、备份、生成 config/local、迁移报告），幂等。
+- **upgrade 本地校验模式**：`harness upgrade --to <ver> --source <path>` 从本地 source 校验 commit + Profile checksum，临时渲染、原子替换、更新锁文件。
+- **锁文件嵌套结构**：对齐 `harness-lock.schema.json`（`harness.{version,repository,ref,commit}` + `profiles.{name}.{version,checksum}` + `generated` + `previousVersion.lockContent`）。
+- **Agent 动态规则选择（HR-006）**：`code-reviewer`/`test-writer` 不再内嵌规则正文，改为调用 `rules select` 按需加载，报告引用规则 ID。
+- **Agent 分发**：render 将 harness 管理的 Agent 拷贝到业务项目 `.claude/agents/`。
+- **rules select 上下文预算**：按 `codeReview`/`taskRules` 预算段截断（优先 error/Core/高优先级）。
+- **local/index.yaml 统一为 sections 结构**（需求 §11.10）+ `protected-files.md`。
+- **端到端测试套件**：`test_render/version/hooks/migrate/doctor/cli/e2e`，覆盖 19→44。
+
+### Fixed
+
+- 入口脚本 `PYTHONPATH` 在 `set -u` 下崩溃（干净环境所有命令不可用）。
+- `resolve_profiles` 在 render/rules 三处调用签名错配。
+- `get_build_commands` 参数语义与取 key 错误（`compile` vs `compileCommand`）。
+- `find_project_root` 用 `.git` 导致 examples 子项目根错位；解耦 harness 安装源根与业务项目根。
+- `doctor._doc007` 取错字段（应为 `content.path`）致规则文件缺失检测失效。
+- `doctor._auto_fix` DOC-001 写 JSON 存为 `.yaml`。
+- `doctor` 强制 `.git` 依赖；DOC-001/DOC-003 误报。
+- `java-common/rules.yaml` 两处 `severity: warn`（违反 schema enum）。
+- `JAVA-TEST-*` 规则未匹配 `test-generation` 任务与源文件路径。
+- `version.do_upgrade` 假升级（不下载不校验）。
+- CI GATE-009 敏感信息扫描只告警不阻断（违反 §13.6）。
+
+### Changed
+
+- `get_core_dir`/`get_profiles_dir`/`get_templates_dir` 解耦：局部优先、harness 源根回退。
+- DOC-010 检测 Hook 是否为当前版本（非仅文件存在）。
+- Agent 报告格式强制引用规则 ID。
+
+---
+
 ## 2.0.0 — 2026-07-27
 
 ### Added

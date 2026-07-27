@@ -106,7 +106,7 @@ class RuleSelector:
 
         if resolve_profiles is not None and enabled:
             try:
-                resolved = resolve_profiles(enabled, self.project_root)
+                resolved = resolve_profiles(self.project_root, enabled)
                 self._profiles_cache = resolved
                 return resolved
             except Exception:

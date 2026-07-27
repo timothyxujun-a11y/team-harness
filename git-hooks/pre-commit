@@ -1,4 +1,5 @@
 #!/bin/bash
+# HARNESS_HOOK_VERSION=2.0.0
 # pre-commit - 提交前编译检查（Maven）
 # 只检查不修改代码
 # 安装方式：由 scripts/install-git-hooks.sh 自动安装到 .git/hooks/pre-commit

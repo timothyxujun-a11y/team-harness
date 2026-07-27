@@ -180,7 +180,7 @@ rules:
   - id: JAVA-LOG-002
     title: 日志级别使用规范
     description: 按场景正确使用 DEBUG/INFO/WARN/ERROR 四个级别，避免滥用 ERROR 和 WARN
-    severity: warn
+    severity: warning
     enforced: false
     selectors:
       profiles:
@@ -240,10 +240,12 @@ rules:
         include:
           - "**/*Test.java"
           - "**/*Tests.java"
+          - "**/src/main/**/*.java"
       tasks:
         - feature-development
         - refactor
         - code-review
+        - test-generation
     checks:
       agent: true
       ci: false
@@ -266,10 +268,12 @@ rules:
         include:
           - "**/*Test.java"
           - "**/*Tests.java"
+          - "**/src/main/**/*.java"
       tasks:
         - feature-development
         - refactor
         - code-review
+        - test-generation
     checks:
       agent: true
       ci: false
@@ -292,10 +296,12 @@ rules:
         include:
           - "**/*Test.java"
           - "**/*Tests.java"
+          - "**/src/main/**/*.java"
       tasks:
         - feature-development
         - refactor
         - code-review
+        - test-generation
     checks:
       agent: true
       ci: false
@@ -309,7 +315,7 @@ rules:
   - id: JAVA-TEST-004
     title: 测试最小化运行与覆盖率要求
     description: 只运行改动的测试类，使用 @RunWith(MockitoJUnitRunner.class)，核心逻辑行覆盖率不低于 80%
-    severity: warn
+    severity: warning
     enforced: false
     selectors:
       profiles:
@@ -318,10 +324,12 @@ rules:
         include:
           - "**/*Test.java"
           - "**/*Tests.java"
+          - "**/src/main/**/*.java"
       tasks:
         - feature-development
         - refactor
         - code-review
+        - test-generation
     checks:
       agent: true
       ci: false

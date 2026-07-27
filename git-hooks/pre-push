@@ -1,4 +1,5 @@
 #!/bin/bash
+# HARNESS_HOOK_VERSION=2.0.0
 # pre-push - 推送前增量单测覆盖率检查（JaCoCo + diff-cover）
 # 校验本次推送相对 origin/main 的增量行覆盖率 > 80%
 # 安装方式：由 scripts/install-git-hooks.sh 自动安装到 .git/hooks/pre-push

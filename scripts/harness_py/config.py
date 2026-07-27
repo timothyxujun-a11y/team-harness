@@ -170,3 +170,19 @@ def get_build_commands(project_root):
         "testCommand": f"{maven_cmd} test",
         "packageCommand": f"{maven_cmd} clean package -DskipTests",
     }
+
+
+def get_context_budget(config, task):
+    """根据任务类型返回上下文预算 dict（合并默认值与项目 config 覆盖）。
+
+    code-review 任务使用 codeReview 段，其它任务使用 taskRules 段。
+    返回 dict 含 maxFiles / maxRules / maxTokens（项目 config 未设置的字段回退默认）。
+    """
+    ctx = (config or {}).get("context", {}) or {}
+    segment = "codeReview" if task == "code-review" else "taskRules"
+
+    budget = {}
+    for key, value in _DEFAULT_CONTEXT.get(segment, {}).items():
+        budget[key] = value
+    budget.update(ctx.get(segment, {}) or {})
+    return budget

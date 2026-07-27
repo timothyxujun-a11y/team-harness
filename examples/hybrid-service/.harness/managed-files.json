@@ -1,0 +1,47 @@
+{
+  "CLAUDE.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/hybrid-service/CLAUDE.md",
+    "generated": true,
+    "sha256": "d965ff38abb8ae410ce484b815d9fb42ef6b89493a5479257e93206d81a3092a"
+  },
+  "docs/harness/java-common/index.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/hybrid-service/docs/harness/java-common/index.md",
+    "generated": true,
+    "sha256": "1ea5d15a054ace461a8103af2640e3a67ba4e97cb62a1c478a552819842cc317"
+  },
+  "docs/harness/spring-http/index.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/hybrid-service/docs/harness/spring-http/index.md",
+    "generated": true,
+    "sha256": "716974a95f8122e23e074ef98fda398df50347a7e03ec4647ad84b5b235a1f1c"
+  },
+  "docs/harness/spring-mq/index.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/hybrid-service/docs/harness/spring-mq/index.md",
+    "generated": true,
+    "sha256": "b89eeedad40b7a7567622dcabb9b3245b70b8c4691a60164cbeade4479cbaf5e"
+  },
+  "docs/harness/core/index.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/hybrid-service/docs/harness/core/index.md",
+    "generated": true,
+    "sha256": "e6f18975528138b7f135ee7fa2a73841fd169fa7be831125fc56d1de1d34ae24"
+  },
+  ".claude/settings.json": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/hybrid-service/.claude/settings.json",
+    "generated": true,
+    "sha256": "63b5be2cdfeed3c2ce1e6625760043ec031d9c891d82b4f6dcaf0617957ae5e9"
+  },
+  ".github/workflows/harness-check.yml": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/hybrid-service/.github/workflows/harness-check.yml",
+    "generated": true,
+    "sha256": "02208a485b44314ce4bb3513c3ef2e40def1c86fc6f16d7b1d229391f59c97bf"
+  },
+  ".claude/agents/code-reviewer.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/hybrid-service/.claude/agents/code-reviewer.md",
+    "generated": true,
+    "sha256": "9368129c4dd0767af1eaffc07d20a172cc63a03322b0c8ac4294b2aad1cdd6ed"
+  },
+  ".claude/agents/test-writer.md": {
+    "path": "/Users/chenxujun/projects/self/harness-project/examples/hybrid-service/.claude/agents/test-writer.md",
+    "generated": true,
+    "sha256": "35468c6ef905ce901bb9d8ed538ca7df4ce12f88a3ea1578c8a845ce9ccf3b02"
+  }
+}
