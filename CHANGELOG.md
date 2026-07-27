@@ -10,8 +10,10 @@
 - 纯 Bash CLI `./harness init`（零依赖，替代原 Python + venv 方案，接入不再需要 Python）
 - `.ai/` 标准结构：`rules/` + `context/` + `prompts/` + `version.yaml`
 - `profiles/springboot` 模板源：编码 / API / 数据库 / 异常 / 安全 / 测试 6 类规则 + 项目上下文骨架 + 5 个 Prompt 模板
-- `templates/CLAUDE.md.tpl`、`templates/AGENTS.md.tpl` 入口文件模板（Claude Code / Codex）
-- 接入即生成 `CLAUDE.md` + `AGENTS.md`，AI 自动加载规范
+- `templates/CLAUDE.md.tpl` 入口文件模板（Claude Code）
+- 接入即生成 `CLAUDE.md`，Claude Code 自动加载规范
+
+> 本期仅支持 Claude Code；Codex（`AGENTS.md`）等其他智能体接入后续提供。
 
 ### 移除（相对旧版 v2.x，回归 V1.0 精简范围）
 - Python CLI（`scripts/harness_py/`）与 venv bootstrap

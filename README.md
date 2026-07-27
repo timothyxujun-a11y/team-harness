@@ -16,7 +16,8 @@
 ## 支持的 AI 工具
 
 - **Claude Code** → 生成 `CLAUDE.md`
-- **Codex** → 生成 `AGENTS.md`
+
+> 其他智能体（Codex 等）接入后续支持，本期仅提供 Claude Code。
 
 ## 架构
 
@@ -27,7 +28,7 @@
 │   ├── rules/              # coding / api / database / exception / security / test
 │   ├── context/            # project / architecture / module（骨架）
 │   └── prompts/            # feature / bugfix / review / unittest / document
-└── templates/              # CLAUDE.md.tpl / AGENTS.md.tpl
+└── templates/              # CLAUDE.md.tpl
 
 业务项目接入后（harness init 生成）
 ├── .ai/
@@ -35,8 +36,7 @@
 │   ├── rules/              # 团队规范
 │   ├── context/            # 项目上下文（人工填写，不被覆盖）
 │   └── prompts/            # Prompt 模板
-├── CLAUDE.md               # Claude Code 入口
-└── AGENTS.md               # Codex 入口
+└── CLAUDE.md               # Claude Code 入口
 ```
 
 ## 快速开始
@@ -52,12 +52,12 @@ cd my-service
 
 接入后：
 1. 编辑 `.ai/context/project.md` 填写项目背景
-2. 用 Claude Code / Codex 打开项目，AI 自动加载 `.ai` 规范
+2. 用 Claude Code 打开项目，AI 自动加载 `.ai` 规范
 
 ## harness init 流程（PRD §6.7）
 
 ```
-检测项目类型 → 加载 Profile → 生成 .ai/ → 生成 CLAUDE.md → 生成 AGENTS.md → 完成
+检测项目类型 → 加载 Profile → 生成 .ai/ → 生成 CLAUDE.md → 完成
 ```
 
 | 参数 | 作用 | 默认 |
@@ -81,7 +81,7 @@ profile: springboot
 ## 前置条件
 
 - Bash（macOS / Linux 自带；Windows 用 Git Bash / WSL）
-- Git、Claude Code 或 Codex
+- Git、Claude Code
 - 业务项目本身：Java 8+ / Maven 3.6+
 
 > 不需要 Python，不需要 Node，不需要安装任何依赖。

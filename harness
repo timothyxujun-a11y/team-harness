@@ -9,8 +9,7 @@
 #   ./harness help               显示帮助
 #
 # init 流程（PRD §6.7）:
-#   检测项目类型 → 加载 Profile → 生成 .ai 目录
-#   → 生成 CLAUDE.md → 生成 AGENTS.md → 完成接入
+#   检测项目类型 → 加载 Profile → 生成 .ai 目录 → 生成 CLAUDE.md → 完成接入
 # ============================================================
 set -euo pipefail
 
@@ -55,7 +54,6 @@ init 选项:
   ├── context/                 项目上下文（需人工填写）
   └── prompts/                 新需求 / Bug修复 / Review / 单测 / 文档 Prompt 模板
   CLAUDE.md                    Claude Code 入口文件
-  AGENTS.md                    Codex 入口文件
 EOF
 }
 
@@ -143,15 +141,13 @@ EOF
     -e "s|{{harness_version}}|${HARNESS_VERSION}|g"
   )
   render_template "CLAUDE.md.tpl" "CLAUDE.md" "${sed_args[@]}"
-  render_template "AGENTS.md.tpl" "AGENTS.md" "${sed_args[@]}"
   ok "生成 CLAUDE.md（Claude Code 入口）"
-  ok "生成 AGENTS.md（Codex 入口）"
 
   say ""
   say "接入完成 ✅"
   say "下一步:"
   say "  1. 编辑 .ai/context/project.md 填写项目背景、技术栈、模块说明"
-  say "  2. 用 Claude Code / Codex 打开本项目，AI 将自动加载 .ai 规范"
+  say "  2. 用 Claude Code 打开本项目，AI 将自动加载 .ai 规范"
   say "  3. 开发时参考 .ai/prompts 下的 Prompt 模板（新需求 / Bug / Review / 单测）"
 }
 
