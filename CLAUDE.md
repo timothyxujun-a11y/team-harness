@@ -1,27 +1,21 @@
-<!-- 由 Team Harness v1.0.0 生成；更新规则请编辑 .ai/ 后重新执行 ./harness init -->
+<!-- 由 Team Harness v1.1.0 生成；更新规则请编辑 .ai/ 后重新执行 ./harness init -->
 <!-- 本文件为 Claude Code 入口，会被自动加载。请勿手改，重新 init 即可刷新。 -->
 
 # team-harness
 
 Team Harness 规范源与接入工具仓库（轻量 AI 工程框架）
 
-> Profile：`springboot` · Java 17 · 构建：Maven · Harness v1.0.0
+> Profile：`springboot` · Java 17 · 构建：Maven · Harness v1.1.0
 
 ## AI 开发必读
 
-本项目已接入 **Team Harness**。开发前**必须**先加载 `.ai/` 下的规范：
+本项目已接入 **Team Harness**。开发前**必须**：
 
-| 类别 | 路径 | 要点 |
-|------|------|------|
-| 编码规范 | `.ai/rules/coding.md` | 分层职责、DTO 隔离、禁止硬编码、最小改动 |
-| API 规范 | `.ai/rules/api.md` | REST、参数校验、统一返回、异常码 |
-| 数据库规范 | `.ai/rules/database.md` | 索引、禁止 `SELECT *`、深分页、DDL 审核 |
-| 异常处理 | `.ai/rules/exception.md` | 全局异常处理器、业务异常、事务回滚 |
-| 安全规范 | `.ai/rules/security.md` | 禁止硬编码密钥、参数校验、脱敏、SQL 注入 |
-| 测试规范 | `.ai/rules/test.md` | JUnit 5 + Mockito、不启动容器、三覆盖维度 |
-| 项目上下文 | `.ai/context/` | 项目背景、架构、模块（理解需求时先读） |
+1. **按需加载规则**：先读 `.ai/rules/INDEX.md`，按当前任务 / 改动文件**选择**要加载的规则，不要整体加载六份规则。
+2. **理解上下文**：需求不清时先读 `.ai/context/`（项目背景 / 架构 / 模块）。
+3. **复用标准流程**：复杂任务优先用 Skill —— `new-service`（新增微服务）、`new-api`（新增接口）；常规任务对照 `.ai/prompts/` 选 Prompt 模板（`feature` / `bugfix` / `review` / `unittest` / `document`）。
 
-执行任务时，对照 `.ai/prompts/` 选对应 Prompt 模板：`feature`（新需求）/ `bugfix`（修 Bug）/ `review`（代码审查）/ `unittest`（单测）/ `document`（文档）。
+规则一览（路由详见 `INDEX.md`）：`coding` · `api` · `database` · `exception` · `security` · `test`。
 
 ## 目录约定
 
@@ -56,3 +50,7 @@ mvn test -Dtest=XxxServiceTest#shouldXxx  # 指定方法
 ## 提交规范
 
 Conventional Commits：`<type>(<scope>): <中文描述>`，type ∈ `feat / fix / docs / refactor / test / chore`。
+
+## AI 操作日志（强制）
+
+每次任务结束**必须**在 `.ai/log/changes.md` 顶部追加一条：日期 / 任务 / 关键决策 / 改动文件 / 是否跑测试 / 是否过 review。团队据此回溯与改进规范，不得省略。

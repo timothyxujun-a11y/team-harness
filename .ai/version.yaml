@@ -1,6 +1,6 @@
 # Team Harness 版本锁定（PRD §7.3）
 # 升级 Harness 后重新执行 ./harness init 即可刷新 rules/prompts 与版本号。
-version: 1.0.0
+version: 1.1.0
 profile: springboot
 javaVersion: 17
 projectName: team-harness

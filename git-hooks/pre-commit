@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Team Harness 极简 pre-commit（可选；通过 `harness hooks --install` 安装）
+# 只做一件轻量检查：.ai/context 是否有未填写的 [CUSTOMIZE] 占位。
+# 不做编译/测试/覆盖率 —— 那些属于 CI 强制门禁，非 V1.0（研发阶段）范围。
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+if [ -d "$root/.ai/context" ]; then
+  if grep -rn "\[CUSTOMIZE" "$root/.ai/context" >/dev/null 2>&1; then
+    echo "⚠ pre-commit: .ai/context 仍有未填写的 [CUSTOMIZE] 占位：" >&2
+    grep -rn "\[CUSTOMIZE" "$root/.ai/context" >&2 || true
+    echo "  请完善后再提交；确需跳过本次检查可用 git commit --no-verify。" >&2
+    exit 1
+  fi
+fi
+
+echo "✓ pre-commit: .ai 占位检查通过"

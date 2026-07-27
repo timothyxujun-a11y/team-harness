@@ -2,6 +2,21 @@
 
 本文件记录 Team Harness 版本变更，遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## v1.1.0（2026-07-27）
+
+不引入任何依赖，补齐「条件加载 / 流程固化 / 本地自检 / 操作日志」四项能力。
+
+### 新增
+- **规则按需加载**：`.ai/rules/INDEX.md` 路由表，AI 按任务 / 文件选读规则，不整体加载；`harness rules` 查看
+- **多步骤流程 Skill**：`new-service`（新增微服务）、`new-api`（新增接口），`harness init` 分发到 `.claude/skills/`
+- **本地轻量自检** `harness check`：`.ai` 完整性 + `[CUSTOMIZE]` 占位残留
+- **可选极简 pre-commit**：`harness hooks --install`，仅查占位残留（默认不装，`--no-verify` 可跳过）
+- **AI 操作日志**：`.ai/log/changes.md`「日志即 Markdown」，`harness log [--init]` 查看 / 初始化
+- CLAUDE.md 入口改为「先查 INDEX 按需加载」+ 强制写操作日志
+
+### 范围说明
+- CI 强制门禁（编译 / 测试 / 覆盖率 / 漂移 / 敏感信息）不在 V1.x 目标内（聚焦研发阶段）；如需门禁由各项目 CI 自行调用 `harness check`。
+
 ## v1.0.0（2026-07-27）
 
 按《Team Harness AI 工程统一使用平台 V1.0 PRD》全新重构为轻量框架。

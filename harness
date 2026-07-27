@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # ============================================================
-# Team Harness CLI — v1.0
-# 轻量级 AI 工程接入框架（纯 Bash，零依赖）
+# Team Harness CLI — v1（轻量 AI 工程接入框架，纯 Bash，零依赖）
 #
 # 用法:
 #   ./harness init [选项]        在当前项目接入 Harness
+#   ./harness check              本地自检（.ai 完整性 + [CUSTOMIZE] 占位残留）
+#   ./harness rules              打印规则路由表 INDEX（按任务选读规则）
+#   ./harness log [--init]       查看 / 初始化 AI 操作日志
+#   ./harness hooks --install    安装极简 pre-commit（可选；--uninstall 卸载）
 #   ./harness version            显示版本信息
 #   ./harness help               显示帮助
 #
@@ -34,6 +37,10 @@ Team Harness CLI v${HARNESS_VERSION} — 轻量级 AI 工程接入框架
 
 用法:
   ./harness init [选项]        在当前项目接入 Harness（生成 .ai 与入口文件）
+  ./harness check              本地自检（.ai 完整性 + [CUSTOMIZE] 占位残留）
+  ./harness rules              打印规则路由表 INDEX（按任务选读规则，不整体加载）
+  ./harness log [--init]       查看 / 初始化 AI 操作日志（.ai/log/changes.md）
+  ./harness hooks --install    安装极简 pre-commit（可选；--uninstall 卸载）
   ./harness version            显示版本信息
   ./harness help               显示本帮助
 
@@ -43,17 +50,15 @@ init 选项:
   --java-version <版本>        Java 版本（默认: 17）
   --description <描述>         项目一句话描述
 
-示例:
-  ./harness init
-  ./harness init --name order-service --profile springboot --java-version 17
-
 接入后产物:
   .ai/
   ├── version.yaml             Harness 版本与 Profile 锁定
-  ├── rules/                   AI 编码 / API / 数据库 / 异常 / 安全 / 测试 规范
-  ├── context/                 项目上下文（需人工填写）
-  └── prompts/                 新需求 / Bug修复 / Review / 单测 / 文档 Prompt 模板
+  ├── rules/                   规范 + INDEX.md 路由表（编码/API/数据库/异常/安全/测试）
+  ├── context/                 项目上下文（人工填写，不被覆盖）
+  ├── prompts/                 新需求 / Bug修复 / Review / 单测 / 文档 Prompt 模板
+  └── log/changes.md           AI 操作日志（任务结束追加）
   CLAUDE.md                    Claude Code 入口文件
+  .claude/skills/              多步骤流程 Skill（new-service / new-api）
 EOF
 }
 
@@ -103,12 +108,12 @@ cmd_init() {
   say "  Java:    $java_version"
   say ""
 
-  mkdir -p .ai/rules .ai/context .ai/prompts
+  mkdir -p .ai/rules .ai/context .ai/prompts .ai/log
 
   # rules / prompts：团队规范，跟随 Harness 更新（覆盖）
   cp -R "$profile_dir/rules/."   .ai/rules/   2>/dev/null || true
   cp -R "$profile_dir/prompts/." .ai/prompts/ 2>/dev/null || true
-  ok "同步 .ai/rules、.ai/prompts（团队规范）"
+  ok "同步 .ai/rules、.ai/prompts（含 INDEX.md 路由表）"
 
   # context：项目信息骨架，仅首次创建（不覆盖用户已填写的内容）
   if [[ -d "$profile_dir/context" ]]; then
@@ -120,6 +125,23 @@ cmd_init() {
     done
   fi
   ok "生成 .ai/context（项目上下文骨架，请人工填写）"
+
+  # log：AI 操作日志骨架，仅首次创建（不覆盖用户记录）
+  if [[ -f "$profile_dir/log/changes.md" ]] && [[ ! -f .ai/log/changes.md ]]; then
+    cp "$profile_dir/log/changes.md" .ai/log/changes.md
+  fi
+  ok "生成 .ai/log/changes.md（AI 操作日志，任务结束追加）"
+
+  # skills：多步骤流程 Skill，分发到 .claude/skills/（覆盖同名，团队统一）
+  if [[ -d "$profile_dir/skills" ]]; then
+    mkdir -p .claude/skills
+    local s
+    for s in "$profile_dir"/skills/*; do
+      [[ -d "$s" ]] || continue
+      cp -R "$s" .claude/skills/
+    done
+    ok "分发 Skill → .claude/skills/（new-service / new-api）"
+  fi
 
   # version.yaml：覆盖（锁定 Harness 版本与 profile）
   cat > .ai/version.yaml <<EOF
@@ -147,8 +169,103 @@ EOF
   say "接入完成 ✅"
   say "下一步:"
   say "  1. 编辑 .ai/context/project.md 填写项目背景、技术栈、模块说明"
-  say "  2. 用 Claude Code 打开本项目，AI 将自动加载 .ai 规范"
-  say "  3. 开发时参考 .ai/prompts 下的 Prompt 模板（新需求 / Bug / Review / 单测）"
+  say "  2. 运行 ./harness check 自检"
+  say "  3. 用 Claude Code 打开本项目，AI 按 .ai/rules/INDEX.md 按需加载规范"
+  say "  4. 任务结束往 .ai/log/changes.md 追加一条操作日志"
+}
+
+# 本地轻量自检（研发阶段用，非 CI 门禁）
+cmd_check() {
+  local fails="" cnt=0 d f r n
+  say "Team Harness 自检（v${HARNESS_VERSION}）"; say ""
+
+  for d in .ai .ai/rules .ai/context .ai/prompts .ai/log; do
+    if [[ -d "$d" ]]; then ok "目录  $d"; else fails+="• 缺失目录: $d"$'\n'; cnt=$((cnt+1)); fi
+  done
+  for f in .ai/version.yaml .ai/rules/INDEX.md CLAUDE.md; do
+    if [[ -f "$f" ]]; then ok "文件  $f"; else fails+="• 缺失文件: $f"$'\n'; cnt=$((cnt+1)); fi
+  done
+  for r in coding api database exception security test; do
+    [[ -f ".ai/rules/$r.md" ]] || { fails+="• 缺失规则: .ai/rules/$r.md"$'\n'; cnt=$((cnt+1)); }
+  done
+  for r in feature bugfix review unittest document; do
+    [[ -f ".ai/prompts/$r.md" ]] || { fails+="• 缺失 Prompt: .ai/prompts/$r.md"$'\n'; cnt=$((cnt+1)); }
+  done
+  if [[ -d .ai/context ]] && grep -rq "\[CUSTOMIZE" .ai/context 2>/dev/null; then
+    n="$(grep -rn "\[CUSTOMIZE" .ai/context 2>/dev/null | wc -l | tr -d ' ')"
+    fails+="• .ai/context 有 ${n} 处未填写的 [CUSTOMIZE] 占位"$'\n'; cnt=$((cnt+1))
+  else
+    ok ".ai/context 无 [CUSTOMIZE] 残留"
+  fi
+
+  say ""
+  if [[ "$cnt" -eq 0 ]]; then ok "自检通过 ✅（0 个问题）"; return 0; fi
+  warn "发现 $cnt 个问题："
+  printf '%s' "$fails" | while IFS= read -r line; do [[ -n "$line" ]] && err "$line"; done
+  return 1
+}
+
+# 打印规则路由表（按任务选读规则，避免整体加载）
+cmd_rules() {
+  if   [[ -f .ai/rules/INDEX.md ]]; then cat .ai/rules/INDEX.md
+  elif [[ -f "$HARNESS_HOME/profiles/springboot/rules/INDEX.md" ]]; then
+    cat "$HARNESS_HOME/profiles/springboot/rules/INDEX.md"
+  else
+    err "未找到规则路由表 INDEX.md（先运行 ./harness init）"; return 1
+  fi
+}
+
+# AI 操作日志：查看 / 初始化
+cmd_log() {
+  local do_init=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --init) do_init=1; shift ;;
+      -h|--help) say "用法: harness log [--init]  （查看 / 初始化 AI 操作日志）"; return 0 ;;
+      *) err "未知参数: $1"; return 1 ;;
+    esac
+  done
+
+  local log=.ai/log/changes.md
+  if [[ "$do_init" -eq 1 ]]; then
+    mkdir -p .ai/log
+    if [[ ! -f "$log" && -f "$HARNESS_HOME/profiles/springboot/log/changes.md" ]]; then
+      cp "$HARNESS_HOME/profiles/springboot/log/changes.md" "$log"; ok "已初始化 $log"
+    elif [[ -f "$log" ]]; then warn "$log 已存在，未覆盖"
+    else err "日志模板不存在"; return 1; fi
+    return 0
+  fi
+
+  if [[ -f "$log" ]]; then cat "$log"; else err "未找到 $log（用 harness log --init 初始化）"; return 1; fi
+}
+
+# 可选极简 pre-commit：安装 / 卸载
+cmd_hooks() {
+  local mode=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --install)   mode=install; shift ;;
+      --uninstall) mode=uninstall; shift ;;
+      -h|--help) say "用法: harness hooks --install | --uninstall"; return 0 ;;
+      *) err "未知参数: $1"; return 1 ;;
+    esac
+  done
+  [[ -z "$mode" ]] && { err "请指定 --install 或 --uninstall"; return 1; }
+
+  local git_dir
+  git_dir="$(git rev-parse --git-dir 2>/dev/null)" || { err "当前目录不是 git 仓库"; return 1; }
+  local hook="$git_dir/hooks/pre-commit"
+  local src="$HARNESS_HOME/git-hooks/pre-commit"
+
+  if [[ "$mode" == "install" ]]; then
+    [[ -f "$src" ]] || { err "Hook 源不存在: $src"; return 1; }
+    mkdir -p "$git_dir/hooks"
+    cp "$src" "$hook"; chmod +x "$hook"
+    ok "已安装 pre-commit → $hook"
+    say "  极简检查：提交前查 .ai/context 的 [CUSTOMIZE] 占位；跳过用 git commit --no-verify"
+  else
+    if [[ -f "$hook" ]]; then rm -f "$hook"; ok "已卸载 pre-commit"; else warn "未安装 pre-commit，无需卸载"; fi
+  fi
 }
 
 cmd_version() {
@@ -161,6 +278,10 @@ main() {
   shift || true
   case "$cmd" in
     init)                 cmd_init "$@" ;;
+    check)                cmd_check "$@" ;;
+    rules)                cmd_rules "$@" ;;
+    log)                  cmd_log "$@" ;;
+    hooks)                cmd_hooks "$@" ;;
     version|--version|-v) cmd_version ;;
     help|--help|-h)       usage ;;
     *) err "未知命令: $cmd"; echo; usage; exit 1 ;;
