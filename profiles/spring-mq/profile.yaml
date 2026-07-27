@@ -1,0 +1,28 @@
+apiVersion: harness.company.io/v1
+kind: HarnessProfile
+
+metadata:
+  name: spring-mq
+  version: 1.0.0
+  description: Spring 消息队列（MQ）开发规范，涵盖 Consumer 入口、Producer 封装、消息幂等、重试与死信、Schema 兼容性
+
+compatibility:
+  languages:
+    - java
+  javaVersions:
+    - "8"
+    - "11"
+    - "17"
+    - "21"
+  buildTools:
+    - maven
+
+dependsOn:
+  - java-common
+
+conflictsWith: []
+
+content:
+  index: index.md
+  rules: rules.yaml
+  ruleDirectory: rules

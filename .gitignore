@@ -17,3 +17,15 @@ Thumbs.db
 
 # Harness upstream clone (sync.sh 产物)
 .harness-upstream/
+
+# Harness Python venv (运行时自动创建)
+scripts/.harness_venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# Harness 运行时生成文件（在业务项目中由 render 命令生成）
+.harness/managed-files.json
+.harness/lock.yaml
+.harness/backups/

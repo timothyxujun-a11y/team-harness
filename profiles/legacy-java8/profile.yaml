@@ -1,0 +1,25 @@
+apiVersion: harness.company.io/v1
+kind: HarnessProfile
+
+metadata:
+  name: legacy-java8
+  version: 1.0.0
+  description: Java 8 遗留项目编码规范，限制使用 Java 9+ 语法与 API，确保在 JDK 8 环境下可正常编译运行
+
+compatibility:
+  languages:
+    - java
+  javaVersions:
+    - "8"
+  buildTools:
+    - maven
+
+dependsOn:
+  - java-common
+
+conflictsWith: []
+
+content:
+  index: index.md
+  rules: rules.yaml
+  ruleDirectory: rules

@@ -1,0 +1,212 @@
+rules:
+  # ===== AI 行为 =====
+  - id: CORE-AI-001
+    title: 不得编造不存在的接口、类或配置
+    description: AI 生成代码时不得虚构不存在的 API、方法、类名或配置项。不确定时应明确说明。
+    severity: error
+    enforced: true
+    selectors:
+      tasks:
+        - feature-development
+        - bug-fix
+        - refactor
+        - test-generation
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/ai-behavior.md
+    context:
+      priority: high
+      estimatedTokens: 300
+
+  - id: CORE-AI-002
+    title: 修改代码前必须理解需求
+    description: 在修改任何代码之前，必须先理解当前任务的完整需求，不得盲目修改。
+    severity: error
+    enforced: true
+    selectors:
+      tasks:
+        - feature-development
+        - bug-fix
+        - refactor
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/ai-behavior.md
+    context:
+      priority: high
+      estimatedTokens: 300
+
+  - id: CORE-AI-003
+    title: 只修改完成当前任务所需的范围
+    description: 不得引入与当前任务无关的变更。不做"顺手优化"或"格式调整"。
+    severity: error
+    enforced: true
+    selectors:
+      tasks:
+        - feature-development
+        - bug-fix
+        - refactor
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/ai-behavior.md
+    context:
+      priority: high
+      estimatedTokens: 300
+
+  - id: CORE-AI-004
+    title: 修改后应执行必要的编译和测试
+    description: 代码变更完成后，必须执行编译和相关测试验证，失败则停止并报告。
+    severity: error
+    enforced: true
+    selectors:
+      tasks:
+        - feature-development
+        - bug-fix
+        - refactor
+        - test-generation
+    checks:
+      agent: true
+      ci: true
+      documentation: true
+    content:
+      path: rules/ai-behavior.md
+    context:
+      priority: high
+      estimatedTokens: 300
+
+  - id: CORE-AI-005
+    title: AI 生成内容必须接受人工评审
+    description: 所有 AI 生成的代码必须经过人工评审后才能合并。AI 不得自动合并代码。
+    severity: error
+    enforced: true
+    selectors:
+      tasks:
+        - feature-development
+        - bug-fix
+        - refactor
+        - test-generation
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/ai-behavior.md
+    context:
+      priority: high
+      estimatedTokens: 300
+
+  # ===== 安全 =====
+  - id: CORE-SEC-001
+    title: 不得写入生产密钥和敏感信息
+    description: 代码中不得硬编码密码、Token、Access Key、私钥等敏感信息。
+    severity: error
+    enforced: true
+    selectors:
+      tasks:
+        - feature-development
+        - bug-fix
+        - refactor
+        - configuration-change
+    checks:
+      agent: true
+      ci: true
+      documentation: true
+    content:
+      path: rules/security.md
+    context:
+      priority: high
+      estimatedTokens: 250
+
+  - id: CORE-SEC-002
+    title: 不得执行高风险 Git 操作
+    description: 不得执行 force push、reset --hard、递归删除等高风险操作，除非用户明确要求。
+    severity: error
+    enforced: true
+    selectors:
+      tasks:
+        - feature-development
+        - bug-fix
+        - refactor
+        - commit
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/security.md
+    context:
+      priority: high
+      estimatedTokens: 250
+
+  # ===== Git 工作流 =====
+  - id: CORE-GIT-001
+    title: 代码变更应具备可追踪性
+    description: 每次提交应包含清晰的 Commit Message，说明变更内容和原因。
+    severity: warning
+    enforced: false
+    selectors:
+      tasks:
+        - commit
+        - feature-development
+        - bug-fix
+    checks:
+      agent: true
+      ci: true
+      documentation: true
+    content:
+      path: rules/git-workflow.md
+    context:
+      priority: medium
+      estimatedTokens: 350
+
+  - id: CORE-GIT-002
+    title: 高风险操作必须人工确认
+    description: 修改生产配置、数据库 DDL、删除文件等高风险操作必须经过人工确认。
+    severity: error
+    enforced: true
+    selectors:
+      tasks:
+        - feature-development
+        - bug-fix
+        - database-change
+        - configuration-change
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/git-workflow.md
+    context:
+      priority: high
+      estimatedTokens: 350
+
+  # ===== 质量门禁 =====
+  - id: CORE-QUAL-001
+    title: 变更后必须通过质量检查
+    description: 代码变更后必须通过编译检查、单元测试和代码审查。
+    severity: error
+    enforced: true
+    selectors:
+      tasks:
+        - feature-development
+        - bug-fix
+        - refactor
+        - test-generation
+        - code-review
+    checks:
+      agent: true
+      ci: true
+      documentation: true
+    content:
+      path: rules/quality-gates.md
+    context:
+      priority: high
+      estimatedTokens: 300

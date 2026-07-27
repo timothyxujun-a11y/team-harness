@@ -1,0 +1,28 @@
+apiVersion: harness.company.io/v1
+kind: HarnessProfile
+
+metadata:
+  name: spring-http
+  version: 1.0.0
+  description: Spring Boot HTTP API 服务规则
+
+compatibility:
+  languages:
+    - java
+  javaVersions:
+    - "8"
+    - "11"
+    - "17"
+    - "21"
+  buildTools:
+    - maven
+
+dependsOn:
+  - java-common
+
+conflictsWith: []
+
+content:
+  index: index.md
+  rules: rules.yaml
+  ruleDirectory: rules

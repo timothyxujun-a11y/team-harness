@@ -1,0 +1,37 @@
+# 本地规则索引
+# AI 助手按需加载以下文档，避免一次性注入过多上下文
+
+documents:
+  - name: business
+    file: business.md
+    description: 税金计算服务业务领域说明，包含税种、税率配置、计算规则、MQ 消息流、幂等策略
+    keywords:
+      - 税金计算
+      - 税率配置
+      - 增值税
+      - MQ 异步通知
+      - BigDecimal
+    priority: high
+    loadWhen:
+      - feature-development
+      - bug-fix
+      - code-review
+
+  - name: architecture
+    file: architecture.md
+    description: 双入口架构（HTTP + MQ）、包结构、缓存策略、链路追踪说明
+    keywords:
+      - 双入口架构
+      - HTTP API
+      - RocketMQ
+      - Redis 缓存
+      - 分层
+    priority: medium
+    loadWhen:
+      - feature-development
+      - refactor
+      - code-review
+
+rules:
+  maxRules: 12
+  description: 本地任务规则上限 12 条，优先加载与当前任务类型匹配的规则

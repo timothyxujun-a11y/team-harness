@@ -1,0 +1,27 @@
+apiVersion: harness.company.io/v1
+kind: HarnessProfile
+
+metadata:
+  name: core
+  version: 1.0.0
+  description: 适用于全部项目的强制基础规则
+
+compatibility:
+  languages:
+    - java
+  javaVersions:
+    - "8"
+    - "11"
+    - "17"
+    - "21"
+  buildTools:
+    - maven
+
+dependsOn: []
+
+conflictsWith: []
+
+content:
+  index: index.md
+  rules: rules.yaml
+  ruleDirectory: rules

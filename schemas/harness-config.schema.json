@@ -1,0 +1,165 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/timothyxujun-a11y/team-harness/schemas/harness-config.schema.json",
+  "title": "Harness Project Configuration",
+  "description": "业务项目的 Harness 配置文件 (.harness/config.yaml)",
+  "type": "object",
+  "required": ["apiVersion", "kind", "project", "runtime", "profiles"],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "harness.company.io/v1",
+      "description": "API 版本"
+    },
+    "kind": {
+      "type": "string",
+      "const": "HarnessConfig",
+      "description": "资源类型"
+    },
+    "project": {
+      "type": "object",
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "项目名称"
+        },
+        "description": {
+          "type": "string",
+          "description": "项目描述"
+        },
+        "owners": {
+          "type": "object",
+          "properties": {
+            "team": { "type": "string" },
+            "individuals": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "required": ["language", "buildTool"],
+      "properties": {
+        "language": {
+          "type": "string",
+          "enum": ["java"],
+          "description": "编程语言"
+        },
+        "javaVersion": {
+          "type": "string",
+          "enum": ["8", "11", "17", "21"],
+          "description": "Java 版本"
+        },
+        "buildTool": {
+          "type": "string",
+          "enum": ["maven"],
+          "description": "构建工具"
+        },
+        "defaultBranch": {
+          "type": "string",
+          "default": "main",
+          "description": "默认分支"
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "启用的 Profile 列表"
+    },
+    "build": {
+      "type": "object",
+      "properties": {
+        "compileCommand": { "type": "string" },
+        "testCommand": { "type": "string" },
+        "packageCommand": { "type": "string" }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "diffCoverage": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "threshold": { "type": "number", "minimum": 0, "maximum": 100 },
+            "baseBranch": { "type": "string", "default": "origin/main" }
+          }
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "description": "上下文预算配置",
+      "properties": {
+        "alwaysLoaded": {
+          "type": "object",
+          "properties": {
+            "maxFiles": { "type": "integer", "default": 3 },
+            "maxTokens": { "type": "integer", "default": 2000 }
+          }
+        },
+        "taskRules": {
+          "type": "object",
+          "properties": {
+            "maxFiles": { "type": "integer", "default": 8 },
+            "maxRules": { "type": "integer", "default": 12 },
+            "maxTokens": { "type": "integer", "default": 6000 }
+          }
+        },
+        "codeReview": {
+          "type": "object",
+          "properties": {
+            "maxFiles": { "type": "integer", "default": 12 },
+            "maxRules": { "type": "integer", "default": 15 },
+            "maxRulesPerChangedFile": { "type": "integer", "default": 5 },
+            "maxTokens": { "type": "integer", "default": 8000 }
+          }
+        },
+        "fallback": {
+          "type": "object",
+          "properties": {
+            "allowFullIndex": { "type": "boolean", "default": true },
+            "allowFullRuleSet": { "type": "boolean", "default": false }
+          }
+        }
+      }
+    },
+    "localRules": {
+      "type": "object",
+      "properties": {
+        "main": { "type": "string", "default": "CLAUDE.local.md" },
+        "index": { "type": "string", "default": ".harness/local/index.yaml" }
+      }
+    },
+    "ruleOverrides": {
+      "type": "object",
+      "description": "规则例外",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["severity", "reason"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["error", "warning", "info"] },
+          "reason": { "type": "string" },
+          "owner": { "type": "string" },
+          "expiresAt": { "type": "string", "format": "date" }
+        }
+      }
+    },
+    "update": {
+      "type": "object",
+      "properties": {
+        "channel": { "type": "string", "enum": ["canary", "stable"], "default": "stable" },
+        "allowMajorUpgrade": { "type": "boolean", "default": false },
+        "allowMinorUpgrade": { "type": "boolean", "default": true },
+        "allowPatchUpgrade": { "type": "boolean", "default": true }
+      }
+    }
+  }
+}

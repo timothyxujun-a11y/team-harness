@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/timothyxujun-a11y/team-harness/schemas/harness-lock.schema.json",
+  "title": "Harness Lock File",
+  "description": "版本锁文件 (.harness/lock.yaml)",
+  "type": "object",
+  "required": ["apiVersion", "kind", "harness", "profiles"],
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "harness.company.io/v1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "HarnessLock"
+    },
+    "harness": {
+      "type": "object",
+      "required": ["version", "repository", "ref"],
+      "properties": {
+        "version": { "type": "string", "description": "Harness 版本号" },
+        "repository": { "type": "string", "description": "Harness 仓库地址" },
+        "ref": { "type": "string", "description": "Git 引用（Tag 或 Commit）" },
+        "commit": { "type": "string", "description": "Commit SHA" }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "description": "Profile 版本与校验和",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["version", "checksum"],
+        "properties": {
+          "version": { "type": "string" },
+          "checksum": { "type": "string", "description": "Profile 目录 SHA256" }
+        }
+      }
+    },
+    "generated": {
+      "type": "object",
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "checksum": { "type": "string" }
+      }
+    },
+    "previousVersion": {
+      "type": "object",
+      "description": "上一个成功版本（用于回滚）",
+      "properties": {
+        "version": { "type": "string" },
+        "ref": { "type": "string" },
+        "commit": { "type": "string" },
+        "lockContent": { "type": "string", "description": "上一个锁文件的完整内容" }
+      }
+    }
+  }
+}

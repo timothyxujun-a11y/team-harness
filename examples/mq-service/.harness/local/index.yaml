@@ -1,0 +1,37 @@
+# 本地规则索引
+# AI 助手按需加载以下文档，避免一次性注入过多上下文
+
+documents:
+  - name: business
+    file: business.md
+    description: 订单状态变更消息处理的业务领域说明，包含消息流、幂等策略、重试机制、死信处理
+    keywords:
+      - RocketMQ
+      - 消息幂等
+      - 重试配置
+      - 死信队列
+      - 事务消息
+    priority: high
+    loadWhen:
+      - feature-development
+      - bug-fix
+      - code-review
+
+  - name: architecture
+    file: architecture.md
+    description: 项目分层架构、包结构、RocketMQ 集成方式、链路追踪、配置管理说明
+    keywords:
+      - 分层架构
+      - Consumer
+      - Producer
+      - 链路追踪
+      - traceId
+    priority: medium
+    loadWhen:
+      - feature-development
+      - refactor
+      - code-review
+
+rules:
+  maxRules: 12
+  description: 本地任务规则上限 12 条，优先加载与当前任务类型匹配的规则

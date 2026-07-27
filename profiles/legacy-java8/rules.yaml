@@ -1,0 +1,133 @@
+# legacy-java8 规则集
+
+rules:
+  # ==================== Java 8 语法限制 ====================
+  - id: LEGACY-SYN-001
+    title: 禁止使用 Java 9+ 集合工厂方法
+    description: 禁止使用 List.of()、Map.of()、Set.of() 等 Java 9+ 集合工厂方法，必须使用 Collections.unmodifiableList() 或 Arrays.asList() 等 Java 8 兼容写法。
+    severity: error
+    enforced: false
+    selectors:
+      profiles:
+        - legacy-java8
+      paths:
+        include:
+          - "src/main/java/**/*.java"
+          - "src/test/java/**/*.java"
+      tasks:
+        - feature-development
+        - refactor
+        - code-review
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/syntax.md
+    context:
+      priority: high
+      estimatedTokens: 400
+
+  - id: LEGACY-SYN-002
+    title: 禁止使用 var 关键字
+    description: 禁止使用 Java 10+ 引入的 var 局部变量类型推断关键字，必须显式声明变量类型。
+    severity: error
+    enforced: false
+    selectors:
+      profiles:
+        - legacy-java8
+      paths:
+        include:
+          - "src/main/java/**/*.java"
+          - "src/test/java/**/*.java"
+      tasks:
+        - feature-development
+        - refactor
+        - code-review
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/syntax.md
+    context:
+      priority: high
+      estimatedTokens: 350
+
+  - id: LEGACY-SYN-003
+    title: 禁止使用 Java 9+ Stream API 方法
+    description: 禁止使用 Stream.takeWhile()、dropWhile()、ofNullable() 等 Java 9+ 新增方法，必须使用 Java 8 兼容的 Stream API 实现等价逻辑。
+    severity: error
+    enforced: false
+    selectors:
+      profiles:
+        - legacy-java8
+      paths:
+        include:
+          - "src/main/java/**/*.java"
+          - "src/test/java/**/*.java"
+      tasks:
+        - feature-development
+        - refactor
+        - code-review
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/syntax.md
+    context:
+      priority: high
+      estimatedTokens: 450
+
+  # ==================== 旧版兼容性 ====================
+  - id: LEGACY-COMPAT-001
+    title: 测试框架必须使用 JUnit 4
+    description: 遗留项目必须使用 JUnit 4（junit:junit:4.x）作为测试框架，禁止引入 JUnit 5（org.junit.jupiter），确保与旧版 Maven Surefire/Failsafe 插件兼容。
+    severity: error
+    enforced: false
+    selectors:
+      profiles:
+        - legacy-java8
+      paths:
+        include:
+          - "src/test/java/**/*.java"
+          - "pom.xml"
+      tasks:
+        - feature-development
+        - refactor
+        - code-review
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/compatibility.md
+    context:
+      priority: high
+      estimatedTokens: 400
+
+  - id: LEGACY-COMPAT-002
+    title: Maven 插件版本必须兼容 Java 8 和旧版 Maven
+    description: Maven 编译插件、Surefire 等插件版本必须选择兼容 JDK 8 的版本，禁止使用仅支持 JDK 11+ 的插件版本。maven-compiler-plugin 不超过 3.8.1。
+    severity: error
+    enforced: false
+    selectors:
+      profiles:
+        - legacy-java8
+      paths:
+        include:
+          - "pom.xml"
+      tasks:
+        - feature-development
+        - refactor
+        - code-review
+    checks:
+      agent: true
+      ci: false
+      documentation: true
+    content:
+      path: rules/compatibility.md
+    context:
+      priority: high
+      estimatedTokens: 400
