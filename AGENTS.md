@@ -1,11 +1,11 @@
-<!-- 由 Team Harness v{{harness_version}} 生成；更新规则请编辑 .ai/ 后重新执行 ./harness init -->
-<!-- 本文件为 Claude Code 入口，会被自动加载。请勿手改，重新 init 即可刷新。 -->
+<!-- 由 Team Harness v1.0.0 生成；更新规则请编辑 .ai/ 后重新执行 ./harness init -->
+<!-- 本文件为 Codex 入口（AGENTS.md）。Claude Code 入口见 CLAUDE.md，两者内容一致。 -->
 
-# {{project_name}}
+# team-harness — Codex 开发指南
 
-{{project_description}}
+Team Harness 规范源与接入工具仓库（轻量 AI 工程框架）
 
-> Profile：`{{profile}}` · Java {{java_version}} · 构建：Maven · Harness v{{harness_version}}
+> Profile：`springboot` · Java 17 · 构建：Maven · Harness v1.0.0
 
 ## AI 开发必读
 

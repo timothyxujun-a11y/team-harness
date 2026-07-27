@@ -1,9 +1,9 @@
 {
-  "$schema": "https://github.com/timothyxujun-a11y/team-harness/schemas/harness-config.schema.json",
   "permissions": {
     "allow": [
       "Bash(mvn *)",
       "Bash(./mvnw *)",
+      "Bash(./harness *)",
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",
@@ -18,15 +18,18 @@
       "Bash(ls *)",
       "Bash(cat *)",
       "Bash(echo *)",
-      "Bash(./scripts/harness *)",
-      "Bash(./scripts/install-git-hooks.sh)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(chmod *)",
       "Read(*)",
       "Write(*)",
       "Edit(*)"
     ],
     "deny": [
-      "Bash(rm -rf *)",
-      "Bash(rm -r *)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(rm -rf $HOME*)",
+      "Bash(rm -rf .git*)",
       "Bash(git push*--force*)",
       "Bash(git reset*--hard*)",
       "Bash(git rebase*)",

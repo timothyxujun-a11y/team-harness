@@ -1,7 +1,7 @@
 <!-- 由 Team Harness v{{harness_version}} 生成；更新规则请编辑 .ai/ 后重新执行 ./harness init -->
-<!-- 本文件为 Claude Code 入口，会被自动加载。请勿手改，重新 init 即可刷新。 -->
+<!-- 本文件为 Codex 入口（AGENTS.md）。Claude Code 入口见 CLAUDE.md，两者内容一致。 -->
 
-# {{project_name}}
+# {{project_name}} — Codex 开发指南
 
 {{project_description}}
 

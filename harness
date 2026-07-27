@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# ============================================================
+# Team Harness CLI — v1.0
+# 轻量级 AI 工程接入框架（纯 Bash，零依赖）
+#
+# 用法:
+#   ./harness init [选项]        在当前项目接入 Harness
+#   ./harness version            显示版本信息
+#   ./harness help               显示帮助
+#
+# init 流程（PRD §6.7）:
+#   检测项目类型 → 加载 Profile → 生成 .ai 目录
+#   → 生成 CLAUDE.md → 生成 AGENTS.md → 完成接入
+# ============================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HARNESS_HOME="$SCRIPT_DIR"
+HARNESS_VERSION="$(tr -d '[:space:]' < "$HARNESS_HOME/VERSION" 2>/dev/null || echo "0.0.0")"
+
+# ---- 输出着色（非 TTY 时自动关闭）----
+if [[ -t 1 ]]; then
+  C_G=$'\033[32m'; C_Y=$'\033[33m'; C_R=$'\033[31m'; C_0=$'\033[0m'
+else
+  C_G=""; C_Y=""; C_R=""; C_0=""
+fi
+ok()   { printf '%s✓%s %s\n' "$C_G" "$C_0" "$*"; }
+warn() { printf '%s!%s %s\n' "$C_Y" "$C_0" "$*"; }
+err()  { printf '%s✗%s %s\n' "$C_R" "$C_0" "$*" >&2; }
+say()  { printf '%s\n' "$*"; }
+
+usage() {
+  cat <<EOF
+Team Harness CLI v${HARNESS_VERSION} — 轻量级 AI 工程接入框架
+
+用法:
+  ./harness init [选项]        在当前项目接入 Harness（生成 .ai 与入口文件）
+  ./harness version            显示版本信息
+  ./harness help               显示本帮助
+
+init 选项:
+  --name <项目名>              项目名称（默认: 当前目录名）
+  --profile <profile>          使用的 Profile（默认: 自动检测，MVP 仅 springboot）
+  --java-version <版本>        Java 版本（默认: 17）
+  --description <描述>         项目一句话描述
+
+示例:
+  ./harness init
+  ./harness init --name order-service --profile springboot --java-version 17
+
+接入后产物:
+  .ai/
+  ├── version.yaml             Harness 版本与 Profile 锁定
+  ├── rules/                   AI 编码 / API / 数据库 / 异常 / 安全 / 测试 规范
+  ├── context/                 项目上下文（需人工填写）
+  └── prompts/                 新需求 / Bug修复 / Review / 单测 / 文档 Prompt 模板
+  CLAUDE.md                    Claude Code 入口文件
+  AGENTS.md                    Codex 入口文件
+EOF
+}
+
+# 检测项目类型 → profile（MVP 仅 springboot；未来支持 go/python 时在此分流）
+detect_profile() {
+  echo "springboot"
+}
+
+# 渲染模板：将 {{var}} 占位替换为实际值（sed 选项通过 $@ 传入，文件固定在最后）
+render_template() {
+  local tpl_file="$1" out_file="$2"; shift 2
+  sed "$@" "$HARNESS_HOME/templates/$tpl_file" > "$out_file"
+}
+
+cmd_init() {
+  local project_name="" profile="" java_version="17" description=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --name)         project_name="$2"; shift 2 ;;
+      --profile)      profile="$2"; shift 2 ;;
+      --java-version) java_version="$2"; shift 2 ;;
+      --description)  description="$2"; shift 2 ;;
+      -h|--help)      usage; return 0 ;;
+      *) err "未知参数: $1"; echo; usage; return 1 ;;
+    esac
+  done
+
+  local project_root
+  project_root="$(pwd)"
+  [[ -z "$project_name" ]] && project_name="$(basename "$project_root")"
+  [[ -z "$profile" ]]      && profile="$(detect_profile)"
+
+  local profile_dir="$HARNESS_HOME/profiles/$profile"
+  if [[ ! -d "$profile_dir" ]]; then
+    err "Profile 不存在: $profile （查找路径: $profile_dir）"
+    return 1
+  fi
+  if [[ ! -d "$profile_dir/rules" || ! -d "$profile_dir/prompts" ]]; then
+    err "Profile 不完整（缺少 rules/ 或 prompts/）: $profile_dir"
+    return 1
+  fi
+
+  say "Team Harness v${HARNESS_VERSION} — 开始接入"
+  say "  项目:    $project_name"
+  say "  Profile: $profile"
+  say "  Java:    $java_version"
+  say ""
+
+  mkdir -p .ai/rules .ai/context .ai/prompts
+
+  # rules / prompts：团队规范，跟随 Harness 更新（覆盖）
+  cp -R "$profile_dir/rules/."   .ai/rules/   2>/dev/null || true
+  cp -R "$profile_dir/prompts/." .ai/prompts/ 2>/dev/null || true
+  ok "同步 .ai/rules、.ai/prompts（团队规范）"
+
+  # context：项目信息骨架，仅首次创建（不覆盖用户已填写的内容）
+  if [[ -d "$profile_dir/context" ]]; then
+    local f base
+    for f in "$profile_dir"/context/*; do
+      [[ -f "$f" ]] || continue
+      base="$(basename "$f")"
+      [[ -f ".ai/context/$base" ]] || cp "$f" ".ai/context/$base"
+    done
+  fi
+  ok "生成 .ai/context（项目上下文骨架，请人工填写）"
+
+  # version.yaml：覆盖（锁定 Harness 版本与 profile）
+  cat > .ai/version.yaml <<EOF
+# Team Harness 版本锁定（PRD §7.3）
+# 升级 Harness 后重新执行 ./harness init 即可刷新 rules/prompts 与版本号。
+version: ${HARNESS_VERSION}
+profile: ${profile}
+javaVersion: ${java_version}
+projectName: ${project_name}
+EOF
+  ok "生成 .ai/version.yaml"
+
+  # 渲染入口文件（受管文件，覆盖）
+  local sed_args=(
+    -e "s|{{project_name}}|${project_name}|g"
+    -e "s|{{project_description}}|${description}|g"
+    -e "s|{{profile}}|${profile}|g"
+    -e "s|{{java_version}}|${java_version}|g"
+    -e "s|{{harness_version}}|${HARNESS_VERSION}|g"
+  )
+  render_template "CLAUDE.md.tpl" "CLAUDE.md" "${sed_args[@]}"
+  render_template "AGENTS.md.tpl" "AGENTS.md" "${sed_args[@]}"
+  ok "生成 CLAUDE.md（Claude Code 入口）"
+  ok "生成 AGENTS.md（Codex 入口）"
+
+  say ""
+  say "接入完成 ✅"
+  say "下一步:"
+  say "  1. 编辑 .ai/context/project.md 填写项目背景、技术栈、模块说明"
+  say "  2. 用 Claude Code / Codex 打开本项目，AI 将自动加载 .ai 规范"
+  say "  3. 开发时参考 .ai/prompts 下的 Prompt 模板（新需求 / Bug / Review / 单测）"
+}
+
+cmd_version() {
+  say "Team Harness CLI v${HARNESS_VERSION}"
+  say "仓库: https://github.com/timothyxujun-a11y/team-harness"
+}
+
+main() {
+  local cmd="${1:-help}"
+  shift || true
+  case "$cmd" in
+    init)                 cmd_init "$@" ;;
+    version|--version|-v) cmd_version ;;
+    help|--help|-h)       usage ;;
+    *) err "未知命令: $cmd"; echo; usage; exit 1 ;;
+  esac
+}
+
+main "$@"
